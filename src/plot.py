@@ -38,13 +38,25 @@ class Graphics:
         self.dim_y: float = 0.0
         self.frame: bool = False
 
-    def load_svg(self, path_to_file):
+    def load_svg(self, path_to_file, render_color):
         """
         loads an svg file into memory
         """
         self.file_name = path_to_file
         self.paths, self.attributes = svg2paths(self.file_name)
+        self.set_outline_mode(render_color)
         self.update()
+
+    def set_outline_mode(self, render_color, stroke_width=0.2):
+        """
+        Enable or disable outline-only rendering.
+        Modifies attributes in-place.
+        """
+        for attr in self.attributes:
+            attr.pop("style", None)
+            attr["fill"] = "none"
+            attr["stroke"] = attr.get("stroke", render_color)
+            attr["stroke-width"] = str(stroke_width)
 
     def update(self):
         svg_elem = Element("svg", xmlns="http://www.w3.org/2000/svg")
@@ -105,6 +117,9 @@ class Graphics:
         :param angle_deg: rotation angle in degrees
         :param origin: tuple (x, y) to rotate around
         """
+
+        if not self.paths:
+            return None  # or (0,0,0,0) if you prefer
         print(angle_deg)
         self.rotation += angle_deg
         # if angle_deg < 0:
@@ -217,14 +232,14 @@ class Graphics:
             self.attributes.pop()
             self.update()  # rebuild svg_xml
 
-    def frame_toggle(self):
+    def frame_toggle(self, dist: float):
         if not self.paths:
             return
         if self.frame:
             self.remove_frame()
             self.frame = False
         else:
-            self.add_frame()
+            self.add_frame(padding=dist)
             self.frame = True
 
 

@@ -19,16 +19,18 @@ from PySide6.QtWidgets import (
     QFileDialog,
 )
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPainter
+from PySide6.QtGui import QPainter, QPalette
 
 # from PySide6.QtSvg import QGraphicsSvgItem
 import serial.tools.list_ports
 import copy
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtCore import QByteArray
-from PySide6.QtGui import QPixmap, QPainter
+
+# from PySide6.QtGui import QPixmap, QPainter
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
-from PySide6.QtWidgets import QGraphicsPixmapItem
+
+# from PySide6.QtWidgets import QGraphicsPixmapItem
 from settings import SettingsManager
 import plot
 
@@ -139,10 +141,15 @@ class MainWindow(QMainWindow):
         checkbox_box = QGroupBox("Options")
         checkbox_layout = QVBoxLayout(checkbox_box)
 
+        frame_layout = QHBoxLayout()
         self.box_check = QCheckBox("Frame")
+        self.box_spin = QDoubleSpinBox()
         self.rotate_check = QCheckBox("Rotate 90°")
 
-        checkbox_layout.addWidget(self.box_check)
+        # checkbox_layout.addWidget(self.box_check)
+        frame_layout.addWidget(self.box_check)
+        frame_layout.addWidget(self.box_spin)
+        checkbox_layout.addLayout(frame_layout)
         checkbox_layout.addWidget(self.rotate_check)
 
         left_layout.addWidget(checkbox_box)
@@ -196,14 +203,18 @@ class MainWindow(QMainWindow):
         """
         # buttons
         self.open_btn.clicked.connect(self.open_svg)
-        self.refresh_btn.clicked.connect(self.update_svg)
+        self.refresh_btn.clicked.connect(self.reload_svg)
         self.plot_btn.clicked.connect(self.plot)
         # check box rotate
         self.rotate_check.toggled.connect(self.action_rot_90)
         # check box frame
         self.box_check.toggled.connect(self.action_frame)
+        self.box_spin.valueChanged.connect(self.action_frame_padding)
 
     def load_ui_values(self):
+        """
+        restore ui elements from last session
+        """
         self.settings.bind_widget(self.speed_spin, "speed", 40)
         self.settings.bind_widget(self.speed_slider, "speed", 40)
         self.settings.bind_widget(self.pressure_spin, "pressure", 17)
@@ -213,7 +224,10 @@ class MainWindow(QMainWindow):
         self.settings.bind_widget(self.port_combo, "port", "/dev/ttyUSB0")
 
     def closeEvent(self, event):
-        # Save all widgets before closing
+        """
+        when closing the application the state of the ui elements
+        is saved to a file (or registry on win)
+        """
         self.settings.save_all()
         super().closeEvent(event)
 
@@ -230,16 +244,43 @@ class MainWindow(QMainWindow):
         return [self.port_combo.itemText(i) for i in range(self.port_combo.count())]
 
     def open_svg(self):
+        """
+        file open and call update_svg
+        """
         file_name, _ = QFileDialog.getOpenFileName(
             self, "Open SVG file", "", "SVG Files (*.svg)"
         )
         if file_name:
+            self.open_file_name = file_name
+            self.reload_svg()
+        #     # Remove previous SVG if any
+        #     if self.current_svg_item:
+        #         self.scene.removeItem(self.current_svg_item)
+        #     self.open_file_name = file_name
+        #     self.graphics.load_svg(file_name)
+        # self.update_svg()
+
+    def reload_svg(self):
+        if self.open_file_name:
             # Remove previous SVG if any
             if self.current_svg_item:
                 self.scene.removeItem(self.current_svg_item)
-            self.open_file_name = file_name
-            self.graphics.load_svg(file_name)
+            #
+            # get the color for rendering from the palette
+            # palette = QApplication.palette()
+            # render_color = palette.color(QPalette.Text)
+            render_color = self.qcolor_to_svg(
+                QApplication.palette().color(QPalette.Text)
+            )
+            self.graphics.load_svg(self.open_file_name, render_color)
+
         self.update_svg()
+
+    def qcolor_to_svg(self, color):
+        """
+        format color for svg attributes
+        """
+        return color.name()  # "#aabbcc"
 
     def update_svg(self):
         """
@@ -265,35 +306,50 @@ class MainWindow(QMainWindow):
         self.action_frame(self.box_check.isChecked())
 
     def action_rot_90(self):
+        """
+        rotates the scene by 90 degrees
+        """
         self.graphics.rotate_by_90()
         self.update_svg()
 
-    def action_frame(self, state: int):
-        if self.graphics.frame is True and state == 0:
-            self.graphics.frame_toggle()
+    def action_frame_padding(self, *args):
+        """
+        change frame padding
+        """
+        state = self.box_check.isChecked()
+        if state:
+            dist = self.box_spin.value()
+            self.graphics.remove_frame()
+            self.graphics.add_frame(dist)
             self.update_svg()
-        if self.graphics.frame is False and state == 1:
-            self.graphics.frame_toggle()
+
+    def action_frame(self, *args):
+        """
+        adds or removes a frame around all objects
+        for easier removeal of the vinyl from the
+        silicone paper
+        """
+        dist = self.box_spin.value()
+        state = self.box_check.isChecked()
+        if self.graphics.frame is True and not state:
+            self.graphics.frame_toggle(dist)
+            self.update_svg()
+        if self.graphics.frame is False and state:
+            self.graphics.frame_toggle(dist)
             self.update_svg()
 
     def resizeEvent(self, event):
-        # This is called whenever the window is resized
+        """
+        added an update to the resizeEvent so the render
+        is matching the window size
+        """
         self.update_svg()
         # Call the base implementation (important!)
         super().resizeEvent(event)
 
     def update_plotter_attributes(self):
         """
-        updates the isinstance of the dataclass
-        file_name = self.open_file_name
-        # Render SVG into a pixmap
-        renderer = QSvgRenderer(file_name)
-        size = renderer.defaultSize()
-        pixmap = QPixmap(size.width(), size.height())
-        pixmap.fill(Qt.transparent)
-        painter = QPainter(pixmap)
-        renderer.render(painter)
-        painter.end()
+        updates based on the state of the gui
         """
         self.plotter_attr.port = self.port_combo.currentText()
         self.plotter_attr.baud = self.baud_combo.currentText()
