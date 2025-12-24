@@ -23,8 +23,11 @@ from PySide6.QtGui import QPainter
 
 # from PySide6.QtSvg import QGraphicsSvgItem
 import serial.tools.list_ports
+import copy
 from PySide6.QtSvg import QSvgRenderer
+from PySide6.QtCore import QByteArray
 from PySide6.QtGui import QPixmap, QPainter
+from PySide6.QtSvgWidgets import QGraphicsSvgItem
 from PySide6.QtWidgets import QGraphicsPixmapItem
 from settings import SettingsManager
 import plot
@@ -38,6 +41,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.plotter_attr = plot.PlotterSettings()
+        self.graphics = plot.Graphics()
         self.open_file_name = ""
         self.setWindowTitle("Plotter GUI")
 
@@ -80,13 +84,13 @@ class MainWindow(QMainWindow):
         speed_top = QHBoxLayout()
         speed_top.addWidget(QLabel("Speed"))
         self.speed_spin = QSpinBox()
-        self.speed_spin.setRange(1, 100)
+        self.speed_spin.setRange(1, 200)
         self.speed_spin.setValue(40)
         speed_top.addWidget(self.speed_spin)
         speed_layout.addLayout(speed_top)
 
         self.speed_slider = QSlider(Qt.Horizontal)
-        self.speed_slider.setRange(1, 100)
+        self.speed_slider.setRange(1, 200)
         self.speed_slider.setValue(40)
         speed_layout.addWidget(self.speed_slider)
 
@@ -102,14 +106,14 @@ class MainWindow(QMainWindow):
         pressure_top = QHBoxLayout()
         pressure_top.addWidget(QLabel("Force"))
         self.pressure_spin = QSpinBox()
-        self.pressure_spin.setRange(1, 50)
-        self.pressure_spin.setValue(17)
+        self.pressure_spin.setRange(1, 200)
+        self.pressure_spin.setValue(80)
         pressure_top.addWidget(self.pressure_spin)
         pressure_layout.addLayout(pressure_top)
 
         self.pressure_slider = QSlider(Qt.Horizontal)
-        self.pressure_slider.setRange(1, 50)
-        self.pressure_slider.setValue(17)
+        self.pressure_slider.setRange(1, 200)
+        self.pressure_slider.setValue(80)
         pressure_layout.addWidget(self.pressure_slider)
 
         left_layout.addWidget(pressure_group)
@@ -135,7 +139,7 @@ class MainWindow(QMainWindow):
         checkbox_box = QGroupBox("Options")
         checkbox_layout = QVBoxLayout(checkbox_box)
 
-        self.box_check = QCheckBox("Box around")
+        self.box_check = QCheckBox("Frame")
         self.rotate_check = QCheckBox("Rotate 90°")
 
         checkbox_layout.addWidget(self.box_check)
@@ -194,6 +198,10 @@ class MainWindow(QMainWindow):
         self.open_btn.clicked.connect(self.open_svg)
         self.refresh_btn.clicked.connect(self.update_svg)
         self.plot_btn.clicked.connect(self.plot)
+        # check box rotate
+        self.rotate_check.toggled.connect(self.action_rot_90)
+        # check box frame
+        self.box_check.toggled.connect(self.action_frame)
 
     def load_ui_values(self):
         self.settings.bind_widget(self.speed_spin, "speed", 40)
@@ -230,13 +238,53 @@ class MainWindow(QMainWindow):
             if self.current_svg_item:
                 self.scene.removeItem(self.current_svg_item)
             self.open_file_name = file_name
+            self.graphics.load_svg(file_name)
         self.update_svg()
 
     def update_svg(self):
-        # Clear previous items
+        """
+        update attributes and render
+        """
         self.scene.clear()
+        if not self.graphics.svg_xml:
+            return
         self.current_svg_item = None
 
+        # Create a renderer from in-memory SVG
+        self.current_renderer = QSvgRenderer(QByteArray(self.graphics.svg_xml))
+
+        # Create SVG item and add to scene
+        svg_item = QGraphicsSvgItem()
+        svg_item.setSharedRenderer(self.current_renderer)
+        self.scene.addItem(svg_item)
+        self.current_svg_item = svg_item
+
+        # Resize scene to bounding rect
+        self.scene.setSceneRect(svg_item.boundingRect())
+        self.graphics_view.fitInView(svg_item.boundingRect(), Qt.KeepAspectRatio)
+        self.action_frame(self.box_check.isChecked())
+
+    def action_rot_90(self):
+        self.graphics.rotate_by_90()
+        self.update_svg()
+
+    def action_frame(self, state: int):
+        if self.graphics.frame is True and state == 0:
+            self.graphics.frame_toggle()
+            self.update_svg()
+        if self.graphics.frame is False and state == 1:
+            self.graphics.frame_toggle()
+            self.update_svg()
+
+    def resizeEvent(self, event):
+        # This is called whenever the window is resized
+        self.update_svg()
+        # Call the base implementation (important!)
+        super().resizeEvent(event)
+
+    def update_plotter_attributes(self):
+        """
+        updates the isinstance of the dataclass
         file_name = self.open_file_name
         # Render SVG into a pixmap
         renderer = QSvgRenderer(file_name)
@@ -246,19 +294,6 @@ class MainWindow(QMainWindow):
         painter = QPainter(pixmap)
         renderer.render(painter)
         painter.end()
-
-        # Add pixmap to scene
-        svg_item = QGraphicsPixmapItem(pixmap)
-        self.scene.addItem(svg_item)
-        self.current_svg_item = svg_item
-
-        # Resize the scene to the SVG bounding rect
-        self.scene.setSceneRect(svg_item.boundingRect())
-        self.graphics_view.fitInView(svg_item.boundingRect(), Qt.KeepAspectRatio)
-
-    def update_plotter_attributes(self):
-        """
-        updates the isinstance of the dataclass
         """
         self.plotter_attr.port = self.port_combo.currentText()
         self.plotter_attr.baud = self.baud_combo.currentText()
@@ -269,7 +304,7 @@ class MainWindow(QMainWindow):
 
     def plot(self):
         self.update_plotter_attributes()
-        plot.send_to_plotter(self.plotter_attr, self.open_file_name)
+        plot.send_to_plotter(self.plotter_attr, self.graphics)
 
 
 if __name__ == "__main__":

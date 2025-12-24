@@ -1,6 +1,8 @@
 import math
+from math import radians, cos, sin
 from dataclasses import dataclass
-from svgpathtools import svg2paths
+from svgpathtools import Path, Line, svg2paths
+from xml.etree.ElementTree import Element, SubElement, tostring
 import serial
 import time
 
@@ -19,13 +21,211 @@ class PlotterSettings:
     scale: float = 100.0
 
 
-PORT = "/dev/ttyUSB0"  # Linux example
-# PORT = "/dev/ttyACM0"
-# PORT = "COM3"            # Windows example
+class Graphics:
+    """
+    holds the graphics for manipulation and render
+    """
 
-BAUDRATE = 9600
+    def __init__(self):
+        self.file_name: str = ""
+        self.paths = None
+        self.attributes = None
+        self.svg_xml = None
+        self.scale: float = 1
+        self.rotation: float = 0
+        self.rot90: bool = False
+        self.dim_x: float = 0.0
+        self.dim_y: float = 0.0
+        self.frame: bool = False
 
-hpgl_data = "IN;\nSP1;\nPU0,0;\nPD1000,0;\nPU;\nSP0;\n"
+    def load_svg(self, path_to_file):
+        """
+        loads an svg file into memory
+        """
+        self.file_name = path_to_file
+        self.paths, self.attributes = svg2paths(self.file_name)
+        self.update()
+
+    def update(self):
+        svg_elem = Element("svg", xmlns="http://www.w3.org/2000/svg")
+
+        for path, attr in zip(self.paths, self.attributes):
+            d = path.d()
+            # remove 'd' if it exists in attributes
+            attr_copy = dict(attr)
+            attr_copy.pop("d", None)
+            SubElement(svg_elem, "path", d=d, **attr_copy)
+        self.svg_xml = tostring(svg_elem, encoding="utf-8")
+        self.bounding_box()
+        print(self.dim_x, self.dim_y)
+
+    def scale(self, factor: float, origin=(0, 0)):
+        """
+        Scale all paths by a factor around a given origin point.
+        :param factor: scaling factor
+        :param origin: tuple (x, y) to scale around
+        """
+        self.scale *= factor
+        ox, oy = origin
+        for path in self.paths:
+            for segment in path:
+                # scale start and end points
+                segment.start = complex(
+                    ox + factor * (segment.start.real - ox),
+                    oy + factor * (segment.start.imag - oy),
+                )
+                segment.end = complex(
+                    ox + factor * (segment.end.real - ox),
+                    oy + factor * (segment.end.imag - oy),
+                )
+                # scale control points if they exist
+                if hasattr(segment, "control1"):
+                    segment.control1 = complex(
+                        ox + factor * (segment.control1.real - ox),
+                        oy + factor * (segment.control1.imag - oy),
+                    )
+                if hasattr(segment, "control2"):
+                    segment.control2 = complex(
+                        ox + factor * (segment.control2.real - ox),
+                        oy + factor * (segment.control2.imag - oy),
+                    )
+        self.update()  # rebuild svg_xml after transformation
+
+    def rotate_by_90(self):
+        if self.rot90:
+            self.rotate(90)
+            self.rot90 = False
+        else:
+            self.rotate(-90)
+            self.rot90 = True
+
+    def rotate(self, angle_deg: float, origin=(0, 0)):
+        """
+        Rotate all paths by angle_deg degrees around a given origin.
+        :param angle_deg: rotation angle in degrees
+        :param origin: tuple (x, y) to rotate around
+        """
+        print(angle_deg)
+        self.rotation += angle_deg
+        # if angle_deg < 0:
+        #     angle_deg = 360 - abs(angle_deg)
+        # print(angle_deg)
+        ox, oy = origin
+        angle_rad = radians(angle_deg)
+        cos_a = cos(angle_rad)
+        sin_a = sin(angle_rad)
+
+        def rotate_point(p):
+            x, y = p.real, p.imag
+            x -= ox
+            y -= oy
+            x_new = x * cos_a - y * sin_a + ox
+            y_new = x * sin_a + y * cos_a + oy
+            return complex(x_new, y_new)
+
+        for path in self.paths:
+            for segment in path:
+                segment.start = rotate_point(segment.start)
+                segment.end = rotate_point(segment.end)
+                if hasattr(segment, "control1"):
+                    segment.control1 = rotate_point(segment.control1)
+                if hasattr(segment, "control2"):
+                    segment.control2 = rotate_point(segment.control2)
+
+        self.update()  # rebuild svg_xml after rotation
+
+    def bounding_box(self):
+        """
+        Compute the bounding box of all paths in self.paths.
+        Returns (xmin, ymin, xmax, ymax)
+        """
+        if not self.paths:
+            return None  # or (0,0,0,0) if you prefer
+
+        xs, ys = [], []
+
+        for path in self.paths:
+            for seg in path:
+                points = [seg.start, seg.end]
+                if hasattr(seg, "control1"):
+                    points.append(seg.control1)
+                if hasattr(seg, "control2"):
+                    points.append(seg.control2)
+                for p in points:
+                    xs.append(p.real)
+                    ys.append(p.imag)
+
+        xmin = min(xs)
+        xmax = max(xs)
+        ymin = min(ys)
+        ymax = max(ys)
+        self.dim_x = xmax - xmin
+        self.dim_y = ymax - ymin
+        return xmin, ymin, xmax, ymax
+
+    def add_frame(self, padding=15.0):
+        """
+        Adds a rectangular frame around all paths with a given padding.
+        :param padding: distance in same units as SVG coordinates (e.g., mm)
+        """
+        if not self.paths:
+            return
+        self.frame = True
+        bbox = self.bounding_box()
+        if not bbox:
+            return  # nothing to frame
+
+        xmin, ymin, xmax, ymax = bbox
+
+        # expand bbox by padding
+        xmin -= padding
+        ymin -= padding
+        xmax += padding
+        ymax += padding
+
+        # create the rectangle as a Path (4 sides)
+        frame_path = Path(
+            Line(complex(xmin, ymin), complex(xmax, ymin)),
+            Line(complex(xmax, ymin), complex(xmax, ymax)),
+            Line(complex(xmax, ymax), complex(xmin, ymax)),
+            Line(complex(xmin, ymax), complex(xmin, ymin)),
+        )
+
+        # optionally, add an attribute for stroke
+        frame_attr = {"stroke": "black", "fill": "none", "stroke-width": "0.1"}
+
+        # add to your lists
+        self.paths.append(frame_path)
+        self.attributes.append(frame_attr)
+
+        # update the SVG XML
+        self.update()
+
+    def remove_frame(self):
+        """
+        Remove the last path if it is a frame (added by add_frame).
+        Assumes the frame was added last.
+        """
+        if not self.paths:
+            return
+        self.frame = False
+        # Optionally, check if last path is a rectangle
+        last_path = self.paths[-1]
+        if len(last_path) == 4:  # rectangle has 4 segments
+            # remove path and attributes
+            self.paths.pop()
+            self.attributes.pop()
+            self.update()  # rebuild svg_xml
+
+    def frame_toggle(self):
+        if not self.paths:
+            return
+        if self.frame:
+            self.remove_frame()
+            self.frame = False
+        else:
+            self.add_frame()
+            self.frame = True
 
 
 def send_hpgl(port, baudrate, data):
@@ -48,19 +248,6 @@ def send_hpgl(port, baudrate, data):
 
         time.sleep(0.5)
         print("Done.")
-
-
-class Vinyl_cutter:
-    def __init__(self):
-        self.speed: int = 14
-        self.pressure: int = 100
-        self.knife_offset: float = 0.2
-        self.port: str = "/dev/ttyUSB0"
-
-
-# -----------------------------
-# Utilities (same as before)
-# -----------------------------
 
 
 def distance(p1, p2):
@@ -143,67 +330,6 @@ def flatten_quadratic_bezier(p0, p1, p2, max_chord=0.05, min_depth=5):
 # -----------------------------
 
 
-# def flatten_svg_path(path, max_chord=0.05, min_depth=5):
-#     """
-#     Flatten an SVG path into a homogeneous list of points with pen up/down flags.
-#     Returns a list of tuples: (pen, x, y), where 0=PU, 1=PD
-#     """
-#     points = []
-#     start_point = None
-#
-#     for seg in path:
-#         # If start of segment is different from previous end, move pen up
-#         if seg.start != start_point and start_point is not None:
-#             points.append((0, seg.start.real, seg.start.imag))  # PU
-#         start_point = seg.end
-#
-#         # Flatten the segment according to its type
-#         if seg.__class__.__name__ == "Line":
-#             pts = flatten_line(
-#                 (seg.start.real, seg.start.imag), (seg.end.real, seg.end.imag)
-#             )
-#         elif seg.__class__.__name__ == "CubicBezier":
-#             pts = flatten_cubic_bezier(
-#                 (seg.start.real, seg.start.imag),
-#                 (seg.control1.real, seg.control1.imag),
-#                 (seg.control2.real, seg.control2.imag),
-#                 (seg.end.real, seg.end.imag),
-#                 max_chord=max_chord,
-#                 min_depth=min_depth,
-#             )
-#         elif seg.__class__.__name__ == "QuadraticBezier":
-#             pts = flatten_quadratic_bezier(
-#                 (seg.start.real, seg.start.imag),
-#                 (seg.control.real, seg.control.imag),
-#                 (seg.end.real, seg.end.imag),
-#                 max_chord=max_chord,
-#                 min_depth=min_depth,
-#             )
-#         elif seg.__class__.__name__ == "Arc":
-#             pts = []
-#             for b in seg.as_cubic_curves():
-#                 pts += flatten_cubic_bezier(
-#                     (b.start.real, b.start.imag),
-#                     (b.control1.real, b.control1.imag),
-#                     (b.control2.real, b.control2.imag),
-#                     (b.end.real, b.end.imag),
-#                     max_chord=max_chord,
-#                     min_depth=min_depth,
-#                 )[1:]  # skip duplicate start
-#         else:
-#             continue
-#
-#         # Append points as pen down
-#         for i, (x, y) in enumerate(pts):
-#             if i == 0 and points and points[-1][1:] == (x, y):
-#                 continue  # avoid duplicating previous point
-#             points.append((1, x, y))  # PD
-#     if points:
-#         pen, x, y = points[-1]
-#         points[-1] = (0, x, y)
-# return points
-
-
 def flatten_svg_path(path, max_chord=0.05, min_depth=5):
     """
     Flatten an SVG path into a homogeneous list of points with pen up/down flags.
@@ -273,62 +399,6 @@ def flatten_svg_path(path, max_chord=0.05, min_depth=5):
         points.append((0, last_x, last_y))  # PU
 
     return points
-
-
-# def flatten_svg_path(path, max_chord=0.05, min_depth=5):
-#     points = []
-#     start_point = None
-#     for seg in path:
-#         pen = 1
-#         if seg.start != start_point and start_point is not None:
-#             # Move pen to new start
-#             pen = 0
-#             points.append((pen, seg.start.real, seg.start.imag))
-#
-#         start_point = seg.end
-#         if seg.__class__.__name__ == "Line":
-#             pts = flatten_line(
-#                 (seg.start.real, seg.start.imag), (seg.end.real, seg.end.imag)
-#             )
-#         elif seg.__class__.__name__ == "CubicBezier":
-#             pts = flatten_cubic_bezier(
-#                 (seg.start.real, seg.start.imag),
-#                 (seg.control1.real, seg.control1.imag),
-#                 (seg.control2.real, seg.control2.imag),
-#                 (seg.end.real, seg.end.imag),
-#                 max_chord=max_chord,
-#                 min_depth=min_depth,
-#             )
-#         elif seg.__class__.__name__ == "QuadraticBezier":
-#             pts = flatten_quadratic_bezier(
-#                 (seg.start.real, seg.start.imag),
-#                 (seg.control.real, seg.control.imag),
-#                 (seg.end.real, seg.end.imag),
-#                 max_chord=max_chord,
-#                 min_depth=min_depth,
-#             )
-#         elif seg.__class__.__name__ == "Arc":
-#             # Convert Arc to cubic Bezier approximation using svgpathtools
-#             bez_list = seg.as_cubic_curves()
-#             pts = []
-#             for b in bez_list:
-#                 pts += flatten_cubic_bezier(
-#                     (b.start.real, b.start.imag),
-#                     (b.control1.real, b.control1.imag),
-#                     (b.control2.real, b.control2.imag),
-#                     (b.end.real, b.end.imag),
-#                     max_chord=max_chord,
-#                     min_depth=min_depth,
-#                 )[1:]
-#         else:
-#             continue
-#         print("pts", pts)
-#         if points and isinstance(points[-1], tuple) and points[-1][0] == 0:
-#             # Already moved
-#             points += pts[1:]
-#         else:
-#             points += pts
-#     return points
 
 
 # -----------------------------
@@ -413,30 +483,12 @@ def apply_drag_knife_offset(points, offset):
     return adjusted
 
 
-# def generate_hpgl_from_points(points, scale=100):
-#     cmds = []
-#     pen_down = False
-#     for pt in points:
-#         if isinstance(pt, tuple) and pt[0] == "PU":
-#             x, y = pt[1]
-#             cmds.append(f"PU {int(x * scale)},{int(y * scale)};")
-#             pen_down = False
-#         else:
-#             x, y = pt
-#             if not pen_down:
-#                 cmds.append(f"PD {int(x * scale)},{int(y * scale)};")
-#                 pen_down = True
-#             else:
-#                 cmds.append(f"PD {int(x * scale)},{int(y * scale)};")
-#     return cmds
-
-
-def send_to_plotter(attr: object, file):
+def send_to_plotter(attr: object, gfx: object):
     """
     sends the data to the plotter
     """
     # parse the svg file
-    paths, _attributes = svg2paths(file)
+    paths = gfx.paths
     all_points = []
 
     # flatten cuves
