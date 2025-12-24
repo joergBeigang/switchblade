@@ -23,7 +23,8 @@ from PySide6.QtGui import QPainter, QPalette
 
 # from PySide6.QtSvg import QGraphicsSvgItem
 import serial.tools.list_ports
-import copy
+
+# import copy
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtCore import QByteArray
 
@@ -33,6 +34,7 @@ from PySide6.QtSvgWidgets import QGraphicsSvgItem
 # from PySide6.QtWidgets import QGraphicsPixmapItem
 from settings import SettingsManager
 import plot
+import gui
 
 
 def list_serial_ports():
@@ -45,150 +47,11 @@ class MainWindow(QMainWindow):
         self.plotter_attr = plot.PlotterSettings()
         self.graphics = plot.Graphics()
         self.open_file_name = ""
-        self.setWindowTitle("Plotter GUI")
-
-        # ---- Central widget ----
-        central = QWidget()
-        self.setCentralWidget(central)
-
-        main_layout = QHBoxLayout(central)
-        main_layout.setContentsMargins(4, 4, 4, 4)
-        main_layout.setSpacing(6)
-
-        # =========================
-        # Left control panel
-        # =========================
-        left_panel = QWidget()
-        left_panel.setMinimumWidth(260)
-        left_panel.setMaximumWidth(360)
-        left_panel.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setSpacing(8)
-
-        # --- Port dropdown ---
-        left_layout.addWidget(QLabel("Port"))
-        self.port_combo = QComboBox()
-        self.port_combo.addItems(["/dev/ttyUSB0", "/dev/ttyUSB1"])
-        left_layout.addWidget(self.port_combo)
-
-        # --- Baud rate dropdown ---
-        left_layout.addWidget(QLabel("Baud rate"))
-        self.baud_combo = QComboBox()
-        self.baud_combo.addItems(["9600", "19200", "38400", "115200"])
-        self.baud_combo.setCurrentText("9600")
-        left_layout.addWidget(self.baud_combo)
-
-        # --- Speed group ---
-        speed_group = QGroupBox("Speed")
-        speed_layout = QVBoxLayout(speed_group)
-
-        speed_top = QHBoxLayout()
-        speed_top.addWidget(QLabel("Speed"))
-        self.speed_spin = QSpinBox()
-        self.speed_spin.setRange(1, 200)
-        self.speed_spin.setValue(40)
-        speed_top.addWidget(self.speed_spin)
-        speed_layout.addLayout(speed_top)
-
-        self.speed_slider = QSlider(Qt.Horizontal)
-        self.speed_slider.setRange(1, 200)
-        self.speed_slider.setValue(40)
-        speed_layout.addWidget(self.speed_slider)
-
-        left_layout.addWidget(speed_group)
-        # Speed two-way connection
-        self.speed_spin.valueChanged.connect(self.speed_slider.setValue)
-        self.speed_slider.valueChanged.connect(self.speed_spin.setValue)
-
-        # --- Pressure group ---
-        pressure_group = QGroupBox("Pressure")
-        pressure_layout = QVBoxLayout(pressure_group)
-
-        pressure_top = QHBoxLayout()
-        pressure_top.addWidget(QLabel("Force"))
-        self.pressure_spin = QSpinBox()
-        self.pressure_spin.setRange(1, 200)
-        self.pressure_spin.setValue(80)
-        pressure_top.addWidget(self.pressure_spin)
-        pressure_layout.addLayout(pressure_top)
-
-        self.pressure_slider = QSlider(Qt.Horizontal)
-        self.pressure_slider.setRange(1, 200)
-        self.pressure_slider.setValue(80)
-        pressure_layout.addWidget(self.pressure_slider)
-
-        left_layout.addWidget(pressure_group)
-        self.pressure_spin.valueChanged.connect(self.pressure_slider.setValue)
-        self.pressure_slider.valueChanged.connect(self.pressure_spin.setValue)
-
-        # --- Offset group ---
-        offset_group = QGroupBox("Offset")
-        offset_layout = QVBoxLayout(offset_group)
-
-        offset_top = QHBoxLayout()
-        offset_top.addWidget(QLabel("Knife Offset"))
-        self.offset_spin = QDoubleSpinBox()
-        self.offset_spin.setRange(0, 2)
-        self.offset_spin.setValue(0.2)
-        self.offset_spin.setSingleStep(0.05)
-        offset_top.addWidget(self.offset_spin)
-        offset_layout.addLayout(offset_top)
-
-        left_layout.addWidget(offset_group)
-
-        # --- Checkboxes ---
-        checkbox_box = QGroupBox("Options")
-        checkbox_layout = QVBoxLayout(checkbox_box)
-
-        frame_layout = QHBoxLayout()
-        self.box_check = QCheckBox("Frame")
-        self.box_spin = QDoubleSpinBox()
-        self.rotate_check = QCheckBox("Rotate 90°")
-
-        # checkbox_layout.addWidget(self.box_check)
-        frame_layout.addWidget(self.box_check)
-        frame_layout.addWidget(self.box_spin)
-        checkbox_layout.addLayout(frame_layout)
-        checkbox_layout.addWidget(self.rotate_check)
-
-        left_layout.addWidget(checkbox_box)
-
-        # --- Buttons ---
-        self.open_btn = QPushButton("Open SVG")
-        self.refresh_btn = QPushButton("Refresh SVG")
-        self.plot_btn = QPushButton("Plot")
-
-        left_layout.addWidget(self.open_btn)
-        left_layout.addWidget(self.refresh_btn)
-        left_layout.addWidget(self.plot_btn)
-
-        # Push everything up
-        left_layout.addStretch()
-
-        # =========================
-        # Graphics view (right)
-        # =========================
-        scene = QGraphicsScene()
-        graphics_view = QGraphicsView(scene)
-
-        graphics_view.setRenderHint(QPainter.Antialiasing)
-        graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-
-        # =========================
-        # Assemble main layout
-        # =========================
-        main_layout.addWidget(left_panel)
-        main_layout.addWidget(graphics_view)
-
-        # Stretch: left ~25%, right ~75%
-        main_layout.setStretch(0, 1)
-        main_layout.setStretch(1, 3)
+        self.setWindowTitle("Switchblade")
+        gui.build_gui(self)
         self.port_timer = QTimer()
         self.port_timer.timeout.connect(self.update_ports)
         self.port_timer.start(1000)  # 1 second
-        self.scene = scene
-        self.graphics_view = graphics_view
         self.current_svg_item = None
 
         # Connect Open SVG button
@@ -220,6 +83,7 @@ class MainWindow(QMainWindow):
         self.settings.bind_widget(self.pressure_spin, "pressure", 17)
         self.settings.bind_widget(self.pressure_slider, "pressure", 17)
         self.settings.bind_widget(self.box_check, "box", False)
+        self.settings.bind_widget(self.box_spin, "box_spin", 5)
         self.settings.bind_widget(self.rotate_check, "rotate90", False)
         self.settings.bind_widget(self.port_combo, "port", "/dev/ttyUSB0")
 
@@ -302,7 +166,8 @@ class MainWindow(QMainWindow):
 
         # Resize scene to bounding rect
         self.scene.setSceneRect(svg_item.boundingRect())
-        self.graphics_view.fitInView(svg_item.boundingRect(), Qt.KeepAspectRatio)
+        self.graphics_view.fitInView(
+            svg_item.boundingRect(), Qt.KeepAspectRatio)
         self.action_frame(self.box_check.isChecked())
 
     def action_rot_90(self):

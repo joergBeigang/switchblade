@@ -1,4 +1,5 @@
 import math
+import threading
 from math import radians, cos, sin
 from dataclasses import dataclass
 from svgpathtools import Path, Line, svg2paths
@@ -243,26 +244,36 @@ class Graphics:
             self.frame = True
 
 
+def send_hpgl_worker(port, baudrate, data):
+    try:
+        # timeout ensures serial open won't block forever
+        with serial.Serial(
+            port=port,
+            baudrate=baudrate,
+            bytesize=serial.EIGHTBITS,
+            parity=serial.PARITY_NONE,
+            stopbits=serial.STOPBITS_ONE,
+            timeout=1,  # read timeout
+            write_timeout=1,  # write timeout
+            xonxoff=False,
+            rtscts=False,
+            dsrdtr=False,
+        ) as ser:
+            # optional: poll until the device responds instead of fixed sleep
+            time.sleep(2)  # short wait for plotter wake-up
+            print("Sending HPGL...")
+            ser.write(data.encode("ascii"))
+            ser.flush()
+            time.sleep(0.5)
+            print("Done.")
+    except serial.SerialException as e:
+        print(f"Error opening serial port {port}: {e}")
+
+
 def send_hpgl(port, baudrate, data):
-    with serial.Serial(
-        port=port,
-        baudrate=baudrate,
-        bytesize=serial.EIGHTBITS,
-        parity=serial.PARITY_NONE,
-        stopbits=serial.STOPBITS_ONE,
-        timeout=1,
-        xonxoff=False,
-        rtscts=False,
-        dsrdtr=False,
-    ) as ser:
-        time.sleep(2)  # give plotter time to wake up
-
-        print("Sending HPGL...")
-        ser.write(data.encode("ascii"))
-        ser.flush()
-
-        time.sleep(0.5)
-        print("Done.")
+    thread = threading.Thread(target=send_hpgl_worker,
+                              args=(port, baudrate, data))
+    thread.start()
 
 
 def distance(p1, p2):
@@ -484,7 +495,8 @@ def apply_drag_knife_offset(points, offset):
                 if length1 != 0:
                     dx1 *= offset / length1
                     dy1 *= offset / length1
-                    adjusted[i] = (curr_pt[0], curr_pt[1] + dx1, curr_pt[2] + dy1)
+                    adjusted[i] = (curr_pt[0], curr_pt[1] +
+                                   dx1, curr_pt[2] + dy1)
 
                 # Compute shorten vector along curr-next
                 dx2 = next_pt[1] - curr_pt[1]
@@ -493,7 +505,8 @@ def apply_drag_knife_offset(points, offset):
                 if length2 != 0:
                     dx2 *= offset / length2
                     dy2 *= offset / length2
-                    adjusted[i + 1] = (next_pt[0], next_pt[1] - dx2, next_pt[2] - dy2)
+                    adjusted[i + 1] = (next_pt[0],
+                                       next_pt[1] - dx2, next_pt[2] - dy2)
 
     return adjusted
 
@@ -518,7 +531,8 @@ def send_to_plotter(attr: object, gfx: object):
     # move points to the right lower corner
     min_x = min(x for pen, x, y in all_points)
     min_y = min(y for pen, x, y in all_points)
-    normalized_points = [(pen, x - min_x, y - min_y) for pen, x, y in all_points]
+    normalized_points = [(pen, x - min_x, y - min_y)
+                         for pen, x, y in all_points]
 
     # generate hpgl code from the points
     hpgl_cmds = build_header(attr)
@@ -559,47 +573,5 @@ def ui_to_fs(ui_value: float) -> int:
     return int(round(fs))
 
 
-# -----------------------------
-# Example usage
-# -----------------------------
 if __name__ == "__main__":
-    # Load SVG file
-    svg_file = "example.svg"  # replace with your SVG
-    paths, _attributes = svg2paths(svg_file)
-    # for obj in paths:
-    #     for segment in obj:
-    # print(obj)
-
-    all_points = []
-    for path in paths:
-        pts = flatten_svg_path(path, max_chord=0.05, min_depth=5)
-        all_points += pts
-
-    all_points = apply_drag_knife_offset(all_points, 0.2)
-    # Find the minimum X and Y across all points
-    min_x = min(x for pen, x, y in all_points)
-    min_y = min(y for pen, x, y in all_points)
-
-    # Shift all points so that (min_x, min_y) becomes (0,0)
-    normalized_points = [(pen, x - min_x, y - min_y) for pen, x, y in all_points]
-    # print(all_points)
-    hpgl_cmds = generate_hpgl_from_points(normalized_points, scale=10)
-
-    # for cmd in hpgl_cmds:
-    #     print(cmd)
-    cmd_str = "\n".join(hpgl_cmds)
-
-    hpgl_data = "SO;IN; !PG0;PA ;SP1;VS1PU 3307,0; PD 3307,0; PU 0,0; VS40; FS10"
-
-    hpgl_data += cmd_str
-    print(hpgl_data)
-    send_hpgl(PORT, BAUDRATE, hpgl_data)
-
-    # Output HP-GL
-    with open("output.hpgl", "w") as f:
-        f.write("IN;\n")
-        for cmd in hpgl_cmds:
-            f.write(cmd + "\n")
-        f.write("SO;\n")
-
-    print("HP-GL generated:", len(hpgl_cmds), "commands")
+    pass
