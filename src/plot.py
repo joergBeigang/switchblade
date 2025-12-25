@@ -1,25 +1,46 @@
 import math
 import threading
 from math import radians, cos, sin
-from dataclasses import dataclass
 from svgpathtools import Path, Line, svg2paths
 from xml.etree.ElementTree import Element, SubElement, tostring
 import serial
 import time
 
 
-@dataclass
 class PlotterSettings:
     """
     holds all plotter attributes
     """
 
-    port: str = ""
-    baud: int = 0
-    knife_offset: float = 0.0
-    speed: int = 0
-    pressure: int = 0
-    scale: float = 100.0
+    def __init__(self, settings: object):
+        self.settings = settings
+        self.port: str = ""
+        self.baud: int = 0
+        self.knife_offset: float = 0.0
+        self.speed: int = 0
+        self.pressure: int = 0
+        self.scale: float = 310.0
+        self.load_settings()
+
+    def load_settings(self):
+        """
+        updates the attributes of plotter_attr from
+        the values saved to disk (settings popup)
+        """
+        self.scale = self.settings.settings.value(
+            "plot/scale_factor", 200.0, type=float
+        )
+        self.baud = int(self.settings.settings.value(
+            "plot/baud", 9600, type=int))
+        self.port = self.settings.settings.value("plot/port", "COM1", type=str)
+
+    def save_settngs(self):
+        """
+        saves all settings set in settings dialog to disk
+        """
+        self.settings.settings.setValue("plot/scale_factor", self.scale)
+        self.settings.settings.setValue("plot/baud", self.baud)
+        self.settings.settings.setValue("plot/port", self.port)
 
 
 class Graphics:
@@ -46,12 +67,13 @@ class Graphics:
         self.file_name = path_to_file
         self.paths, self.attributes = svg2paths(self.file_name)
         self.set_outline_mode(render_color)
-        self.update()
+        dim = self.update()
+        return dim
 
     def set_outline_mode(self, render_color, stroke_width=0.2):
         """
         Enable or disable outline-only rendering.
-        Modifies attributes in-place.
+        Modifies attributes in -place.
         """
         for attr in self.attributes:
             attr.pop("style", None)
@@ -70,13 +92,13 @@ class Graphics:
             SubElement(svg_elem, "path", d=d, **attr_copy)
         self.svg_xml = tostring(svg_elem, encoding="utf-8")
         self.bounding_box()
-        print(self.dim_x, self.dim_y)
+        return self.dim_x, self.dim_y
 
     def scale(self, factor: float, origin=(0, 0)):
         """
         Scale all paths by a factor around a given origin point.
-        :param factor: scaling factor
-        :param origin: tuple (x, y) to scale around
+        : param factor: scaling factor
+        : param origin: tuple(x, y) to scale around
         """
         self.scale *= factor
         ox, oy = origin
@@ -102,7 +124,20 @@ class Graphics:
                         ox + factor * (segment.control2.real - ox),
                         oy + factor * (segment.control2.imag - oy),
                     )
-        self.update()  # rebuild svg_xml after transformation
+        dim = self.update()  # rebuild svg_xml after transformation
+        return dim
+
+    def reset(self):
+        self.file_name: str = ""
+        self.paths = None
+        self.attributes = None
+        self.svg_xml = None
+        self.scale = 1
+        self.rotation = 0
+        self.rot90 = False
+        self.dim_x = 0.0
+        self.dim_y = 0.0
+        self.frame = False
 
     def rotate_by_90(self):
         if self.rot90:
@@ -115,8 +150,8 @@ class Graphics:
     def rotate(self, angle_deg: float, origin=(0, 0)):
         """
         Rotate all paths by angle_deg degrees around a given origin.
-        :param angle_deg: rotation angle in degrees
-        :param origin: tuple (x, y) to rotate around
+        : param angle_deg: rotation angle in degrees
+        : param origin: tuple(x, y) to rotate around
         """
 
         if not self.paths:
@@ -148,12 +183,13 @@ class Graphics:
                 if hasattr(segment, "control2"):
                     segment.control2 = rotate_point(segment.control2)
 
-        self.update()  # rebuild svg_xml after rotation
+        dim = self.update()  # rebuild svg_xml after rotation
+        return dim
 
     def bounding_box(self):
         """
         Compute the bounding box of all paths in self.paths.
-        Returns (xmin, ymin, xmax, ymax)
+        Returns(xmin, ymin, xmax, ymax)
         """
         if not self.paths:
             return None  # or (0,0,0,0) if you prefer
@@ -182,7 +218,7 @@ class Graphics:
     def add_frame(self, padding=15.0):
         """
         Adds a rectangular frame around all paths with a given padding.
-        :param padding: distance in same units as SVG coordinates (e.g., mm)
+        : param padding: distance in same units as SVG coordinates(e.g., mm)
         """
         if not self.paths:
             return
@@ -208,18 +244,19 @@ class Graphics:
         )
 
         # optionally, add an attribute for stroke
-        frame_attr = {"stroke": "black", "fill": "none", "stroke-width": "0.1"}
+        frame_attr = {"stroke": "red", "fill": "none", "stroke-width": "0.1"}
 
         # add to your lists
         self.paths.append(frame_path)
         self.attributes.append(frame_attr)
 
         # update the SVG XML
-        self.update()
+        dim = self.update()
+        return dim
 
     def remove_frame(self):
         """
-        Remove the last path if it is a frame (added by add_frame).
+        Remove the last path if it is a frame(added by add_frame).
         Assumes the frame was added last.
         """
         if not self.paths:
@@ -231,7 +268,8 @@ class Graphics:
             # remove path and attributes
             self.paths.pop()
             self.attributes.pop()
-            self.update()  # rebuild svg_xml
+        dim = self.update()  # rebuild svg_xml
+        return dim
 
     def frame_toggle(self, dist: float):
         if not self.paths:
@@ -244,7 +282,7 @@ class Graphics:
             self.frame = True
 
 
-def send_hpgl_worker(port, baudrate, data):
+def send_hpgl_tread(port, baudrate, data):
     try:
         # timeout ensures serial open won't block forever
         with serial.Serial(
@@ -271,7 +309,7 @@ def send_hpgl_worker(port, baudrate, data):
 
 
 def send_hpgl(port, baudrate, data):
-    thread = threading.Thread(target=send_hpgl_worker,
+    thread = threading.Thread(target=send_hpgl_tread,
                               args=(port, baudrate, data))
     thread.start()
 
@@ -286,9 +324,9 @@ def lerp(p1, p2, t):
     return (p1[0] + t * (p2[0] - p1[0]), p1[1] + t * (p2[1] - p1[1]))
 
 
-# -----------------------------
+# **************************************************
 # Flatten cubic Bezier from svgpathtools CubicBezier
-# -----------------------------
+# **************************************************
 
 
 def flatten_cubic_bezier(p0, p1, p2, p3, max_chord=0.05, min_depth=5):
@@ -325,9 +363,9 @@ def flatten_cubic_bezier(p0, p1, p2, p3, max_chord=0.05, min_depth=5):
     return points
 
 
-# -----------------------------
+# *****************************
 # Flatten Line
-# -----------------------------
+# *****************************
 
 
 def flatten_line(
@@ -337,9 +375,9 @@ def flatten_line(
     return [p0, p1]
 
 
-# -----------------------------
+# ********************************************
 # Flatten Quadratic Bezier (from svgpathtools)
-# -----------------------------
+# ********************************************
 
 
 def flatten_quadratic_bezier(p0, p1, p2, max_chord=0.05, min_depth=5):
@@ -351,15 +389,15 @@ def flatten_quadratic_bezier(p0, p1, p2, max_chord=0.05, min_depth=5):
     )
 
 
-# -----------------------------
+# *****************************
 # Flatten SVG Path
-# -----------------------------
+# *****************************
 
 
 def flatten_svg_path(path, max_chord=0.05, min_depth=5):
     """
     Flatten an SVG path into a homogeneous list of points with pen up/down flags.
-    Returns a list of tuples: (pen, x, y), where 0=PU, 1=PD.
+    Returns a list of tuples: (pen, x, y), where 0 = PU, 1 = PD.
     Ensures knife is up before and after each path object.
     """
     points = []
@@ -427,15 +465,15 @@ def flatten_svg_path(path, max_chord=0.05, min_depth=5):
     return points
 
 
-# -----------------------------
+# *****************************
 # Generate HP-GL commands
-# -----------------------------
+# *****************************
 
 
 def generate_hpgl_from_points(points, scale=2):
     """
     Generate HPGL commands from points.
-    points: list of (pen, x, y) tuples, 0=PU, 1=PD
+    points: list of(pen, x, y) tuples, 0 = PU, 1 = PD
     scale: multiplier to convert SVG units to plotter units
     """
     cmds = []
@@ -459,7 +497,7 @@ def generate_hpgl_from_points(points, scale=2):
 
 
 def angle_between(p1, p2, p3):
-    """Return the angle (in degrees) at p2 formed by p1-p2-p3"""
+    """Return the angle ( in degrees) at p2 formed by p1-p2-p3"""
     v1 = (p1[1] - p2[1], p1[2] - p2[2])
     v2 = (p3[1] - p2[1], p3[2] - p2[2])
     dot = v1[0] * v2[0] + v1[1] * v2[1]
@@ -474,7 +512,7 @@ def angle_between(p1, p2, p3):
 def apply_drag_knife_offset(points, offset):
     """
     Adjust points for a drag knife.
-    points: list of (pen, x, y)
+    points: list of(pen, x, y)
     offset: distance to overshoot/shorten at non-tangent joins
     """
     adjusted = points.copy()

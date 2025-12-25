@@ -2,24 +2,10 @@ import sys
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
-    QWidget,
-    QGraphicsView,
-    QGraphicsScene,
-    QHBoxLayout,
-    QVBoxLayout,
-    QLabel,
-    QComboBox,
-    QSpinBox,
-    QSlider,
-    QDoubleSpinBox,
-    QPushButton,
-    QCheckBox,
-    QGroupBox,
-    QSizePolicy,
     QFileDialog,
 )
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPainter, QPalette
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPalette
 
 # from PySide6.QtSvg import QGraphicsSvgItem
 import serial.tools.list_ports
@@ -44,20 +30,15 @@ def list_serial_ports():
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.plotter_attr = plot.PlotterSettings()
+        self.settings = SettingsManager()
+        self.plotter_attr = plot.PlotterSettings(self.settings)
         self.graphics = plot.Graphics()
+        self.actions = Actions(self)
         self.open_file_name = ""
         self.setWindowTitle("Switchblade")
         gui.build_gui(self)
-        self.port_timer = QTimer()
-        self.port_timer.timeout.connect(self.update_ports)
-        self.port_timer.start(1000)  # 1 second
         self.current_svg_item = None
-
-        # Connect Open SVG button
         self.connect_actions()
-
-        self.settings = SettingsManager()
         self.load_ui_values()
 
     def connect_actions(self):
@@ -65,14 +46,16 @@ class MainWindow(QMainWindow):
         connect actions to ui elements
         """
         # buttons
-        self.open_btn.clicked.connect(self.open_svg)
-        self.refresh_btn.clicked.connect(self.reload_svg)
-        self.plot_btn.clicked.connect(self.plot)
+        self.open_btn.clicked.connect(self.actions.open_svg)
+        self.refresh_btn.clicked.connect(self.actions.load_svg)
+        # self.refresh_btn.clicked.connect(self.action_open_settings)
+        self.plot_btn.clicked.connect(self.actions.plot)
         # check box rotate
-        self.rotate_check.toggled.connect(self.action_rot_90)
+        self.rotate_check.toggled.connect(self.actions.rot_90)
         # check box frame
-        self.box_check.toggled.connect(self.action_frame)
-        self.box_spin.valueChanged.connect(self.action_frame_padding)
+        self.box_check.toggled.connect(self.actions.frame)
+        self.box_spin.valueChanged.connect(self.actions.frame_padding)
+        self.settings_btn.clicked.connect(self.actions.open_settings)
 
     def load_ui_values(self):
         """
@@ -85,7 +68,11 @@ class MainWindow(QMainWindow):
         self.settings.bind_widget(self.box_check, "box", False)
         self.settings.bind_widget(self.box_spin, "box_spin", 5)
         self.settings.bind_widget(self.rotate_check, "rotate90", False)
-        self.settings.bind_widget(self.port_combo, "port", "/dev/ttyUSB0")
+        # self.settings.bind_widget(self.port_combo, "port", "/dev/ttyUSB0")
+
+    def update_dim(self, dim):
+        self.stats_label2.setText(f"X:{dim[0]:.1f}mm Y:{dim[1]:.1f}")
+        print(dim)
 
     def closeEvent(self, event):
         """
@@ -95,56 +82,8 @@ class MainWindow(QMainWindow):
         self.settings.save_all()
         super().closeEvent(event)
 
-    def update_ports(self):
-        current = self.port_combo.currentText()
-        ports = list_serial_ports()
-        if set(ports) != set(self.port_combo_items()):
-            self.port_combo.clear()
-            self.port_combo.addItems(ports)
-            if current in ports:
-                self.port_combo.setCurrentText(current)
-
     def port_combo_items(self):
         return [self.port_combo.itemText(i) for i in range(self.port_combo.count())]
-
-    def open_svg(self):
-        """
-        file open and call update_svg
-        """
-        file_name, _ = QFileDialog.getOpenFileName(
-            self, "Open SVG file", "", "SVG Files (*.svg)"
-        )
-        if file_name:
-            self.open_file_name = file_name
-            self.reload_svg()
-        #     # Remove previous SVG if any
-        #     if self.current_svg_item:
-        #         self.scene.removeItem(self.current_svg_item)
-        #     self.open_file_name = file_name
-        #     self.graphics.load_svg(file_name)
-        # self.update_svg()
-
-    def reload_svg(self):
-        if self.open_file_name:
-            # Remove previous SVG if any
-            if self.current_svg_item:
-                self.scene.removeItem(self.current_svg_item)
-            #
-            # get the color for rendering from the palette
-            # palette = QApplication.palette()
-            # render_color = palette.color(QPalette.Text)
-            render_color = self.qcolor_to_svg(
-                QApplication.palette().color(QPalette.Text)
-            )
-            self.graphics.load_svg(self.open_file_name, render_color)
-
-        self.update_svg()
-
-    def qcolor_to_svg(self, color):
-        """
-        format color for svg attributes
-        """
-        return color.name()  # "#aabbcc"
 
     def update_svg(self):
         """
@@ -166,42 +105,10 @@ class MainWindow(QMainWindow):
 
         # Resize scene to bounding rect
         self.scene.setSceneRect(svg_item.boundingRect())
-        self.graphics_view.fitInView(
-            svg_item.boundingRect(), Qt.KeepAspectRatio)
-        self.action_frame(self.box_check.isChecked())
-
-    def action_rot_90(self):
-        """
-        rotates the scene by 90 degrees
-        """
-        self.graphics.rotate_by_90()
-        self.update_svg()
-
-    def action_frame_padding(self, *args):
-        """
-        change frame padding
-        """
-        state = self.box_check.isChecked()
-        if state:
-            dist = self.box_spin.value()
-            self.graphics.remove_frame()
-            self.graphics.add_frame(dist)
-            self.update_svg()
-
-    def action_frame(self, *args):
-        """
-        adds or removes a frame around all objects
-        for easier removeal of the vinyl from the
-        silicone paper
-        """
-        dist = self.box_spin.value()
-        state = self.box_check.isChecked()
-        if self.graphics.frame is True and not state:
-            self.graphics.frame_toggle(dist)
-            self.update_svg()
-        if self.graphics.frame is False and state:
-            self.graphics.frame_toggle(dist)
-            self.update_svg()
+        self.graphics_view.fitInView(svg_item.boundingRect(), Qt.KeepAspectRatio)
+        self.actions.frame(self.box_check.isChecked())
+        self.actions.rot_90()
+        self.update_dim(self.graphics.update())
 
     def resizeEvent(self, event):
         """
@@ -223,9 +130,113 @@ class MainWindow(QMainWindow):
         self.plotter_attr.pressure = self.pressure_spin.value()
         self.plotter_attr.scale = 100
 
+
+class Actions:
+    """
+    all actions triggerd buy gui elements
+    """
+
+    def __init__(self, parent):
+        self.parent = parent
+        self.graphics = parent.graphics
+
+    def open_svg(self):
+        """
+        file open and call update_svg
+        """
+        last_dir = self.parent.settings.settings.value("last_dir", "")
+        file_name, _ = QFileDialog.getOpenFileName(
+            self.parent, "Open SVG file", last_dir, "SVG Files (*.svg)"
+        )
+        if file_name:
+            self.parent.open_file_name = file_name
+            dim = self.load_svg()
+            if dim:
+                self.parent.update_dim(dim)
+            # Save the directory for next time
+            import os
+
+            self.parent.settings.settings.setValue(
+                "last_dir", os.path.dirname(file_name)
+            )
+            print("Selected:", file_name)
+
+    def load_svg(self):
+        if self.parent.open_file_name:
+            # Remove previous SVG if any
+            if self.parent.current_svg_item:
+                self.parent.scene.removeItem(self.parent.current_svg_item)
+            # get the color for rendering from the palette
+            # render_color = palette.color(QPalette.Text)
+            render_color = self.qcolor_to_svg(
+                QApplication.palette().color(QPalette.Text)
+            )
+            # reset all values of the Graphics class
+            self.graphics.reset()
+            dim = self.graphics.load_svg(self.parent.open_file_name, render_color)
+            self.parent.update_dim(dim)
+
+        self.parent.update_svg()
+
+    def qcolor_to_svg(self, color):
+        """
+        format color for svg attributes
+        """
+        return color.name()  # "#aabbcc"
+
     def plot(self):
-        self.update_plotter_attributes()
-        plot.send_to_plotter(self.plotter_attr, self.graphics)
+        if not self.graphics.paths:
+            return
+        self.parent.update_plotter_attributes()
+        plot.send_to_plotter(self.parent.plotter_attr, self.graphics)
+
+    def rot_90(self):
+        """
+        rotates the scene by 90 degrees
+        """
+        # self.graphics.rot_90
+        if self.graphics.rot90 == self.parent.rotate_check.isChecked():
+            return
+        self.graphics.rotate_by_90()
+        self.parent.update_svg()
+
+    def frame(self, *args):
+        """
+        adds or removes a frame around all objects
+        for easier removeal of the vinyl from the
+        silicone paper
+        """
+        dist = self.parent.box_spin.value()
+        state = self.parent.box_check.isChecked()
+        if self.graphics.frame is True and not state:
+            self.graphics.frame_toggle(dist)
+            self.parent.update_svg()
+        if self.graphics.frame is False and state:
+            self.graphics.frame_toggle(dist)
+            self.parent.update_svg()
+
+    def frame_padding(self, *args):
+        """
+        change frame padding
+        """
+        state = self.parent.box_check.isChecked()
+        if state:
+            dist = self.parent.box_spin.value()
+            self.graphics.remove_frame()
+            dim = self.graphics.add_frame(dist)
+            self.parent.update_dim(dim)
+            self.parent.update_svg()
+
+    def open_settings(self):
+        dlg = gui.SettingsDialog(
+            parent=self.parent,
+            plot_attr=self.parent.plotter_attr,
+            ports=list_serial_ports,
+        )
+        if dlg.exec():  # modal
+            # test = dlg.get_values()g
+            print(f"test{self.parent.plotter_attr.scale}")
+            self.parent.plotter_attr.save_settngs()
 
 
 if __name__ == "__main__":

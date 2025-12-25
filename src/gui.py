@@ -2,6 +2,8 @@
 gui module
 """
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QWidget,
     QGraphicsView,
@@ -17,25 +19,8 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QGroupBox,
     QSizePolicy,
+    QDialog,
 )
-
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPainter, QPalette
-
-# from PySide6.QtSvg import QGraphicsSvgItem
-import serial.tools.list_ports
-
-# import copy
-from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtCore import QByteArray
-
-# from PySide6.QtGui import QPixmap, QPainter
-from PySide6.QtSvgWidgets import QGraphicsSvgItem
-
-# from PySide6.QtWidgets import QGraphicsPixmapItem
-from settings import SettingsManager
-import plot
-import gui
 
 
 def build_gui(parent):
@@ -58,18 +43,8 @@ def build_gui(parent):
     left_layout = QVBoxLayout(left_panel)
     left_layout.setSpacing(8)
 
-    # --- Port dropdown ---
-    left_layout.addWidget(QLabel("Port"))
-    parent.port_combo = QComboBox()
-    parent.port_combo.addItems(["/dev/ttyUSB0", "/dev/ttyUSB1"])
-    left_layout.addWidget(parent.port_combo)
-
-    # --- Baud rate dropdown ---
-    left_layout.addWidget(QLabel("Baud rate"))
-    parent.baud_combo = QComboBox()
-    parent.baud_combo.addItems(["9600", "19200", "38400", "115200"])
-    parent.baud_combo.setCurrentText("9600")
-    left_layout.addWidget(parent.baud_combo)
+    parent.settings_btn = QPushButton("Plotter Settings")
+    left_layout.addWidget(parent.settings_btn)
 
     # --- Speed group ---
     speed_group = QGroupBox("Speed")
@@ -198,6 +173,73 @@ def build_gui(parent):
     # Stretch: left ~25%, right ~75%
     main_layout.setStretch(0, 1)
     main_layout.setStretch(1, 3)
+
+
+class SettingsDialog(QDialog):
+    def __init__(self, parent=None, plot_attr: object = None, ports=None):
+        super().__init__(parent)
+        self.plot_attr = plot_attr
+        self.setWindowTitle("Settings")
+
+        layout = QVBoxLayout(self)
+
+        # --- Scale factor ---
+        hlayout1 = QHBoxLayout()
+        hlayout1.addWidget(QLabel("Scale factor:"))
+        self.scale_factor_spin = QDoubleSpinBox()
+        self.scale_factor_spin.setRange(0, 1000)
+        self.scale_factor_spin.setSingleStep(1)
+        self.scale_factor_spin.setValue(self.plot_attr.scale)
+        hlayout1.addWidget(self.scale_factor_spin)
+        layout.addLayout(hlayout1)
+
+        # --- Port ---
+        layout.addWidget(QLabel("Port"))
+        self.port_combo = QComboBox()
+
+        self.port_combo.addItems(ports())
+        self.set_value_combo_box(str(self.plot_attr.port), self.port_combo)
+        layout.addWidget(self.port_combo)
+
+        # --- Baud ---
+        layout.addWidget(QLabel("Baud rate"))
+        self.baud_combo = QComboBox()
+        self.baud_combo.addItems(["9600", "19200", "38400", "115200"])
+        self.set_value_combo_box(str(self.plot_attr.baud), self.baud_combo)
+        layout.addWidget(self.baud_combo)
+
+        # --- OK/Cancel buttons ---
+        btn_layout = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        cancel_btn = QPushButton("Cancel")
+        btn_layout.addWidget(ok_btn)
+        btn_layout.addWidget(cancel_btn)
+        layout.addLayout(btn_layout)
+
+        # Connections
+        ok_btn.clicked.connect(self.on_accept)
+        cancel_btn.clicked.connect(self.reject)
+
+    def set_value_combo_box(self, value, box):
+        """
+        setting the value of a QComboBox
+        """
+        index = box.findText(value)
+        if index != -1:  # Only set if it exists
+            box.setCurrentIndex(index)
+
+    def update_plot_attr(self):
+        self.plot_attr.scale = self.scale_factor_spin.value()
+        self.plot_attr.baud = int(self.baud_combo.currentText())
+        self.plot_attr.port = self.port_combo.currentText()
+
+    def on_accept(self):
+        self.update_plot_attr()
+        self.accept()
+
+    def get_values(self):
+        """Return dialog values"""
+        return self.plot_attr
 
 
 if __name__ == "__main__":
