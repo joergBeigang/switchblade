@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QSizePolicy,
     QDialog,
+    QPlainTextEdit,
 )
 
 
@@ -126,6 +127,7 @@ def build_gui(parent):
     label_scale = QLabel("Scale SVG")
     parent.scale_spin = QDoubleSpinBox()
     parent.scale_spin.setSingleStep(0.1)
+    parent.box_spin.setRange(1, 50)
     parent.scale_spin.setValue(1)
 
     scale_layout.addWidget(label_scale)
@@ -146,10 +148,14 @@ def build_gui(parent):
     parent.open_btn = QPushButton("Open SVG")
     parent.refresh_btn = QPushButton("Refresh SVG")
     parent.plot_btn = QPushButton("Plot")
-
     left_layout.addWidget(parent.open_btn)
     left_layout.addWidget(parent.refresh_btn)
     left_layout.addWidget(parent.plot_btn)
+
+    parent.log = QPlainTextEdit()
+    parent.log.setReadOnly(True)
+    parent.log.setMaximumBlockCount(1000)  # optional: limit history
+    left_layout.addWidget(parent.log)
 
     # Push everything up
     left_layout.addStretch()
@@ -161,8 +167,7 @@ def build_gui(parent):
     parent.graphics_view = QGraphicsView(parent.scene)
 
     parent.graphics_view.setRenderHint(QPainter.Antialiasing)
-    parent.graphics_view.setSizePolicy(
-        QSizePolicy.Expanding, QSizePolicy.Expanding)
+    parent.graphics_view.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     # =========================
     # Assemble main layout

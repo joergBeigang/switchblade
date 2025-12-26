@@ -13,6 +13,7 @@ import serial.tools.list_ports
 # import copy
 from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtCore import QByteArray
+from PySide6.QtGui import QKeySequence, QShortcut
 
 # from PySide6.QtGui import QPixmap, QPainter
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
@@ -34,12 +35,14 @@ class MainWindow(QMainWindow):
         self.plotter_attr = plot.PlotterSettings(self.settings)
         self.graphics = plot.Graphics()
         self.actions = Actions(self)
+        self.shortcuts = ShortcutManager(self)
         self.open_file_name = ""
         self.setWindowTitle("Switchblade")
         gui.build_gui(self)
         self.current_svg_item = None
         self.connect_actions()
         self.load_ui_values()
+        self.dim = [0, 0]
 
     def connect_actions(self):
         """
@@ -56,6 +59,7 @@ class MainWindow(QMainWindow):
         self.box_check.toggled.connect(self.actions.frame)
         self.box_spin.valueChanged.connect(self.actions.frame_padding)
         self.settings_btn.clicked.connect(self.actions.open_settings)
+        self.scale_spin.valueChanged.connect(self.actions.scale)
 
     def load_ui_values(self):
         """
@@ -68,10 +72,14 @@ class MainWindow(QMainWindow):
         self.settings.bind_widget(self.box_check, "box", False)
         self.settings.bind_widget(self.box_spin, "box_spin", 5)
         self.settings.bind_widget(self.rotate_check, "rotate90", False)
-        # self.settings.bind_widget(self.port_combo, "port", "/dev/ttyUSB0")
 
     def update_dim(self, dim):
-        self.stats_label2.setText(f"X:{dim[0]:.1f}mm Y:{dim[1]:.1f}")
+        self.dim = dim
+        scale = self.scale_spin.value()
+        x_dim = dim[0] * scale
+        y_dim = dim[1] * scale
+
+        self.stats_label2.setText(f"X:{x_dim:.1f}mm Y:{y_dim:.1f}")
         print(dim)
 
     def closeEvent(self, event):
@@ -123,12 +131,12 @@ class MainWindow(QMainWindow):
         """
         updates based on the state of the gui
         """
-        self.plotter_attr.port = self.port_combo.currentText()
-        self.plotter_attr.baud = self.baud_combo.currentText()
+        # self.plotter_attr.port = self.port_combo.currentText()
+        # self.plotter_attr.baud = self.baud_combo.currentText()
         self.plotter_attr.knife_offset = self.offset_spin.value()
         self.plotter_attr.speed = self.speed_spin.value()
         self.plotter_attr.pressure = self.pressure_spin.value()
-        self.plotter_attr.scale = 100
+        # self.plotter_attr.scale = 100
 
 
 class Actions:
@@ -139,6 +147,9 @@ class Actions:
     def __init__(self, parent):
         self.parent = parent
         self.graphics = parent.graphics
+
+    def scale(self):
+        self.parent.update_svg()
 
     def open_svg(self):
         """
@@ -162,6 +173,9 @@ class Actions:
             print("Selected:", file_name)
 
     def load_svg(self):
+        """
+        loads the svg file in memeory
+        """
         if self.parent.open_file_name:
             # Remove previous SVG if any
             if self.parent.current_svg_item:
@@ -188,7 +202,12 @@ class Actions:
         if not self.graphics.paths:
             return
         self.parent.update_plotter_attributes()
-        plot.send_to_plotter(self.parent.plotter_attr, self.graphics)
+        scale = self.parent.scale_spin.value()
+        plot.send_to_plotter(
+            self.parent.plotter_attr,
+            self.graphics,
+            scale,
+        )
 
     def rot_90(self):
         """
@@ -237,6 +256,31 @@ class Actions:
             # test = dlg.get_values()g
             print(f"test{self.parent.plotter_attr.scale}")
             self.parent.plotter_attr.save_settngs()
+
+
+class ShortcutManager:
+    def __init__(self, parent):
+        self.actions = parent.actions
+        self.parent = parent
+
+        if sys.platform == "darwin":
+            self.mod = Qt.ControlModifier  # ⌘ Command on macOS
+        else:
+            self.mod = Qt.ControlModifier  # Ctrl on Windows/Linux
+        self.open_svg_sc = QShortcut(QKeySequence(self.mod | Qt.Key_O), parent)
+        self.open_svg_sc.activated.connect(self.actions.open_svg)
+
+        self.load_svg_sc = QShortcut(QKeySequence(self.mod | Qt.Key_R), parent)
+        self.load_svg_sc.activated.connect(self.actions.load_svg)
+
+        self.plot_sc = QShortcut(QKeySequence(self.mod | Qt.Key_P), parent)
+        self.plot_sc.activated.connect(self.actions.plot)
+
+        self.settings_sc = QShortcut(
+            QKeySequence(self.mod | Qt.Key_Comma),
+            parent,
+        )
+        self.settings_sc.activated.connect(self.actions.open_settings)
 
 
 if __name__ == "__main__":

@@ -30,8 +30,7 @@ class PlotterSettings:
         self.scale = self.settings.settings.value(
             "plot/scale_factor", 200.0, type=float
         )
-        self.baud = int(self.settings.settings.value(
-            "plot/baud", 9600, type=int))
+        self.baud = int(self.settings.settings.value("plot/baud", 9600, type=int))
         self.port = self.settings.settings.value("plot/port", "COM1", type=str)
 
     def save_settngs(self):
@@ -53,7 +52,6 @@ class Graphics:
         self.paths = None
         self.attributes = None
         self.svg_xml = None
-        self.scale: float = 1
         self.rotation: float = 0
         self.rot90: bool = False
         self.dim_x: float = 0.0
@@ -93,39 +91,6 @@ class Graphics:
         self.svg_xml = tostring(svg_elem, encoding="utf-8")
         self.bounding_box()
         return self.dim_x, self.dim_y
-
-    def scale(self, factor: float, origin=(0, 0)):
-        """
-        Scale all paths by a factor around a given origin point.
-        : param factor: scaling factor
-        : param origin: tuple(x, y) to scale around
-        """
-        self.scale *= factor
-        ox, oy = origin
-        for path in self.paths:
-            for segment in path:
-                # scale start and end points
-                segment.start = complex(
-                    ox + factor * (segment.start.real - ox),
-                    oy + factor * (segment.start.imag - oy),
-                )
-                segment.end = complex(
-                    ox + factor * (segment.end.real - ox),
-                    oy + factor * (segment.end.imag - oy),
-                )
-                # scale control points if they exist
-                if hasattr(segment, "control1"):
-                    segment.control1 = complex(
-                        ox + factor * (segment.control1.real - ox),
-                        oy + factor * (segment.control1.imag - oy),
-                    )
-                if hasattr(segment, "control2"):
-                    segment.control2 = complex(
-                        ox + factor * (segment.control2.real - ox),
-                        oy + factor * (segment.control2.imag - oy),
-                    )
-        dim = self.update()  # rebuild svg_xml after transformation
-        return dim
 
     def reset(self):
         self.file_name: str = ""
@@ -309,8 +274,7 @@ def send_hpgl_tread(port, baudrate, data):
 
 
 def send_hpgl(port, baudrate, data):
-    thread = threading.Thread(target=send_hpgl_tread,
-                              args=(port, baudrate, data))
+    thread = threading.Thread(target=send_hpgl_tread, args=(port, baudrate, data))
     thread.start()
 
 
@@ -533,8 +497,7 @@ def apply_drag_knife_offset(points, offset):
                 if length1 != 0:
                     dx1 *= offset / length1
                     dy1 *= offset / length1
-                    adjusted[i] = (curr_pt[0], curr_pt[1] +
-                                   dx1, curr_pt[2] + dy1)
+                    adjusted[i] = (curr_pt[0], curr_pt[1] + dx1, curr_pt[2] + dy1)
 
                 # Compute shorten vector along curr-next
                 dx2 = next_pt[1] - curr_pt[1]
@@ -543,13 +506,12 @@ def apply_drag_knife_offset(points, offset):
                 if length2 != 0:
                     dx2 *= offset / length2
                     dy2 *= offset / length2
-                    adjusted[i + 1] = (next_pt[0],
-                                       next_pt[1] - dx2, next_pt[2] - dy2)
+                    adjusted[i + 1] = (next_pt[0], next_pt[1] - dx2, next_pt[2] - dy2)
 
     return adjusted
 
 
-def send_to_plotter(attr: object, gfx: object):
+def send_to_plotter(attr: object, gfx: object, scale):
     """
     sends the data to the plotter
     """
@@ -569,16 +531,16 @@ def send_to_plotter(attr: object, gfx: object):
     # move points to the right lower corner
     min_x = min(x for pen, x, y in all_points)
     min_y = min(y for pen, x, y in all_points)
-    normalized_points = [(pen, x - min_x, y - min_y)
-                         for pen, x, y in all_points]
+    normalized_points = [(pen, x - min_x, y - min_y) for pen, x, y in all_points]
 
     # generate hpgl code from the points
+    final_scale = scale * attr.scale
     hpgl_cmds = build_header(attr)
     hpgl_cmds += "\n".join(
         generate_hpgl_from_points(
             normalized_points,
             # scale=attr.scale,
-            scale=20,
+            scale=final_scale,
         )
     )
     hpgl_cmds += "SO;"
