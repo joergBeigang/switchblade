@@ -14,7 +14,7 @@ There’s also a scale value, so you can scale up the scene—these plotters can
 Switchblade is written in Python, so it’s cross-platform. The releases include binaries for Linux, macOS, and Windows. Running the source on FreeBSD should work as well.
 
 
-You can find the latest releases [here](https://github.com/joergbeigang/switchblade/releases).
+You can find the latest releases [here]([https://github.com/joergbeigang/switchblade/releases]).
 
 ---
 
@@ -58,4 +58,4 @@ The GUI is straightforward and mostly self-explanatory.
 This is a personal project and not polished commercial software.  
 I hope it can be useful for others, and maybe inspire someone to pick up an old professional plotter instead of a cheap new model.
 
-You can download binaries or check out the latest release [here](https://github.com/yourusername/switchblade/releases).
+You can download binaries or check out the latest release [here]([https://github.com/yourusername/switchblade/releases]).
