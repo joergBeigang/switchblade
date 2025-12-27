@@ -19,9 +19,9 @@ from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtSvgWidgets import QGraphicsSvgItem
 
 # from PySide6.QtWidgets import QGraphicsPixmapItem
-from settings import SettingsManager
-import plot
-import gui
+from app.settings import SettingsManager
+from app import plot
+from app import gui
 
 
 def list_serial_ports():
@@ -74,13 +74,14 @@ class MainWindow(QMainWindow):
         self.settings.bind_widget(self.rotate_check, "rotate90", False)
 
     def update_dim(self, dim):
+        if not dim:
+            return
         self.dim = dim
         scale = self.scale_spin.value()
         x_dim = dim[0] * scale
         y_dim = dim[1] * scale
 
         self.stats_label2.setText(f"X:{x_dim:.1f}mm Y:{y_dim:.1f}")
-        print(dim)
 
     def closeEvent(self, event):
         """
@@ -117,6 +118,7 @@ class MainWindow(QMainWindow):
         self.actions.frame(self.box_check.isChecked())
         self.actions.rot_90()
         self.update_dim(self.graphics.update())
+        self.log_msg(f"updated: {self.open_file_name}")
 
     def resizeEvent(self, event):
         """
@@ -137,6 +139,10 @@ class MainWindow(QMainWindow):
         self.plotter_attr.speed = self.speed_spin.value()
         self.plotter_attr.pressure = self.pressure_spin.value()
         # self.plotter_attr.scale = 100
+
+    def log_msg(self, text: str):
+        self.log.appendPlainText(text)
+        self.log.verticalScrollBar().setValue(self.log.verticalScrollBar().maximum())
 
 
 class Actions:
@@ -170,7 +176,7 @@ class Actions:
             self.parent.settings.settings.setValue(
                 "last_dir", os.path.dirname(file_name)
             )
-            print("Selected:", file_name)
+            self.parent.log_msg(f"SVG: {file_name}")
 
     def load_svg(self):
         """
@@ -204,11 +210,11 @@ class Actions:
         self.parent.update_plotter_attributes()
         scale = self.parent.scale_spin.value()
         self.parent.plotter_attr.plot(self.parent.graphics, scale)
-        # plot.send_to_plotter(
-        #     self.parent.plotter_attr,
-        #     self.graphics,
-        #     scale,
-        # )
+        self.parent.log_msg("sending to plotter:")
+        self.parent.log_msg(f"SVG: {self.parent.open_file_name}")
+        self.parent.log_msg(f"Port:{self.parent.plotter_attr.port}")
+        self.parent.log_msg(f"Baud:{self.parent.plotter_attr.baud}")
+        self.parent.log_msg(f"Global Scale:{self.parent.scale_spin.value()}")
 
     def rot_90(self):
         """
@@ -255,8 +261,8 @@ class Actions:
         )
         if dlg.exec():  # modal
             # test = dlg.get_values()g
-            print(f"test{self.parent.plotter_attr.scale}")
             self.parent.plotter_attr.save_settngs()
+            self.parent.log_msg("settings saved")
 
 
 class ShortcutManager:
