@@ -203,11 +203,12 @@ class Actions:
             return
         self.parent.update_plotter_attributes()
         scale = self.parent.scale_spin.value()
-        plot.send_to_plotter(
-            self.parent.plotter_attr,
-            self.graphics,
-            scale,
-        )
+        self.parent.plotter_attr.plot(self.parent.graphics, scale)
+        # plot.send_to_plotter(
+        #     self.parent.plotter_attr,
+        #     self.graphics,
+        #     scale,
+        # )
 
     def rot_90(self):
         """

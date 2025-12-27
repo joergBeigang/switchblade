@@ -21,6 +21,7 @@ class PlotterSettings:
         self.pressure: int = 0
         self.scale: float = 310.0
         self.load_settings()
+        self.thread = None
 
     def load_settings(self):
         """
@@ -40,6 +41,55 @@ class PlotterSettings:
         self.settings.settings.setValue("plot/scale_factor", self.scale)
         self.settings.settings.setValue("plot/baud", self.baud)
         self.settings.settings.setValue("plot/port", self.port)
+
+    def plot(self, gfx: object, scale):
+        """
+        sends the data to the plotter
+        """
+        # parse the svg file
+        paths = gfx.paths
+        all_points = []
+
+        # flatten cuves
+        for path in paths:
+            pts = flatten_svg_path(path, max_chord=0.05, min_depth=5)
+            all_points += pts
+
+        # compensate drag knife
+        if self.knife_offset != 0:
+            all_points = apply_drag_knife_offset(all_points, self.knife_offset)
+
+        # move points to the right lower corner
+        min_x = min(x for pen, x, y in all_points)
+        min_y = min(y for pen, x, y in all_points)
+        normalized_points = [(pen, x - min_x, y - min_y) for pen, x, y in all_points]
+
+        # generate hpgl code from the points
+        final_scale = scale * self.scale
+        hpgl_cmds = build_header(self)
+        hpgl_cmds += "\n".join(
+            generate_hpgl_from_points(
+                normalized_points,
+                # scale=attr.scale,
+                scale=final_scale,
+            )
+        )
+        hpgl_cmds += "SO;"
+        self.send_hpgl(self.port, self.baud, hpgl_cmds)
+
+    def send_hpgl(self, port, baudrate, data):
+        # if self.tread:
+        #     self.tread.cancel()
+
+        # self.thread = threading.Thread(target=send_hpgl_tread, args=(port, baudrate, data))
+        # self.thread.start()
+        # if self.thread:
+        #     stop_thread = True
+        #     self.thread.join()
+        #     self.thread = None
+        self.thread = threading.Thread(target=send_hpgl_thread, args=(port, baudrate, data))
+        self.thread.daemon = True
+        self.thread.start()
 
 
 class Graphics:
@@ -247,30 +297,72 @@ class Graphics:
             self.frame = True
 
 
-def send_hpgl_tread(port, baudrate, data):
+
+stop_thread = False
+
+def send_hpgl_thread(port, baudrate, data, chunk_size=1024, write_timeout=5):
+    global stop_thread
     try:
-        # timeout ensures serial open won't block forever
+        # timeout=None for read; finite write timeout to avoid hanging
         with serial.Serial(
             port=port,
             baudrate=baudrate,
             bytesize=serial.EIGHTBITS,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
-            timeout=10,  # read timeout
-            write_timeout=10,  # write timeout
+            timeout=None,           # read timeout
+            write_timeout=write_timeout,  # write timeout in seconds
             xonxoff=False,
             rtscts=False,
             dsrdtr=False,
         ) as ser:
-            # optional: poll until the device responds instead of fixed sleep
-            time.sleep(2)  # short wait for plotter wake-up
+            # short wait for plotter wake-up
+            time.sleep(2)
             print("Sending HPGL...")
-            ser.write(data.encode("ascii"))
-            time.sleep(0.5)
-            ser.flush()
-            print("Done.")
+            
+            for i in range(0, len(data), chunk_size):
+                if stop_thread:
+                    print("Send cancelled.")
+                    break
+                chunk = data[i:i+chunk_size].encode("ascii")
+                try:
+                    ser.write(chunk)
+                except serial.SerialTimeoutException:
+                    print("Write timeout, stopping send.")
+                    break
+            # ensure all data is sent
+            try:
+                ser.flush()
+            except serial.SerialException:
+                pass
+            print("Done sending HPGL.")
     except serial.SerialException as e:
         print(f"Error opening serial port {port}: {e}")
+
+# def send_hpgl_tread(port, baudrate, data):
+#     try:
+#         # timeout ensures serial open won't block forever
+#         with serial.Serial(
+#             port=port,
+#             baudrate=baudrate,
+#             bytesize=serial.EIGHTBITS,
+#             parity=serial.PARITY_NONE,
+#             stopbits=serial.STOPBITS_ONE,
+#             timeout=None,  # read timeout
+#             write_timeout=None,  # write timeout
+#             xonxoff=False,
+#             rtscts=False,
+#             dsrdtr=False,
+#         ) as ser:
+#             # optional: poll until the device responds instead of fixed sleep
+#             time.sleep(2)  # short wait for plotter wake-up
+#             print("Sending HPGL...")
+#             ser.write(data.encode("ascii"))
+#             time.sleep(0.5)
+#             ser.flush()
+#             print("Done.")
+#     except serial.SerialException as e:
+#         print(f"Error opening serial port {port}: {e}")
 
 
 def send_hpgl(port, baudrate, data):
