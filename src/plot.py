@@ -256,8 +256,8 @@ def send_hpgl_tread(port, baudrate, data):
             bytesize=serial.EIGHTBITS,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
-            timeout=1,  # read timeout
-            write_timeout=1,  # write timeout
+            timeout=10,  # read timeout
+            write_timeout=10,  # write timeout
             xonxoff=False,
             rtscts=False,
             dsrdtr=False,
@@ -266,8 +266,8 @@ def send_hpgl_tread(port, baudrate, data):
             time.sleep(2)  # short wait for plotter wake-up
             print("Sending HPGL...")
             ser.write(data.encode("ascii"))
-            ser.flush()
             time.sleep(0.5)
+            ser.flush()
             print("Done.")
     except serial.SerialException as e:
         print(f"Error opening serial port {port}: {e}")
