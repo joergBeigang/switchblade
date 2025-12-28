@@ -1,7 +1,7 @@
 # Switchblade
 
 **Switchblade** is a small tool to send SVG files to plotters for vinyl cutting.  
-It’s deliberately reduced to the basics: open an SVG, reload the file, plot it.  
+It’s reduced to the basics: open an SVG, reload the file, plot it.  
 There’s also support for rotating 90° and adding a frame around your design for easier vinyl removal.
 
 The workflow is simple: set up your scene in Inkscape, save the plot file, and send it to the plotter.  
@@ -24,7 +24,7 @@ I’ve had a Mimaki CG101 plotter for over 5 years. It came from my parents’ c
 
 I tried using Inkscape’s plotting function via a USB-serial adapter—an utterly frustrating experience. Precision was poor, and any curve was cut painfully slowly.
 
-Luckily, a USB-serial adapter works both ways. I was able to hook up the old computer to my workstation and capture the data being sent to the plotter. Feeding that data to an AI helped me figure out the parameters of the flattening algorithm. In minutes, I had a working solution. From there, it was mostly connecting `pyserial`, parsing SVGs, and compensating for the drag knife.
+Luckily, a USB-serial adapter works both ways. I was able to hook up the old computer to my workstation and capture the data being sent to the plotter. Feeding that data to an AI helped me figure out the parameters of the flattening algorithm. From there, it was mostly connecting `pyserial`, parsing SVGs, and compensating for the drag knife.
 
 The goal is simple: make old professional plotters usable today. Brands like Mimaki or Roland are built to last, and replacement parts like knives or rubber rolls are still available.
 
@@ -49,7 +49,7 @@ So far, I’ve only tested Switchblade with my Mimaki CG101 because it’s the o
 - `Ctrl+P` → Plot  
 - `Ctrl+,` → Settings dialog
 
-The GUI is straightforward and mostly self-explanatory.
+The GUI is straightforward and self-explanatory.
 
 ---
 
