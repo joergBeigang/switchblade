@@ -1,0 +1,15 @@
+altgraph==0.17.5
+macholib==1.16.4
+numpy==2.4.0
+packaging==25.0
+pyinstaller==6.17.0
+pyinstaller-hooks-contrib==2025.11
+pyserial==3.5
+PySide6==6.10.1
+PySide6_Addons==6.10.1
+PySide6_Essentials==6.10.1
+scipy==1.16.3
+setuptools==80.9.0
+shiboken6==6.10.1
+svgpathtools==1.7.2
+svgwrite==1.4.3
