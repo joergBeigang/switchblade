@@ -106,7 +106,9 @@ class PlotterSettings:
         #     stop_thread = True
         #     self.thread.join()
         #     self.thread = None
-        self.thread = threading.Thread(target=send_hpgl_thread, args=(port, baudrate, data))
+        self.thread = threading.Thread(
+            target=send_hpgl_thread, args=(port, baudrate, data)
+        )
         self.thread.daemon = True
         self.thread.start()
 
@@ -277,10 +279,10 @@ class Graphics:
             Line(complex(xmin, ymax), complex(xmin, ymin)),
         )
 
-        # optionally, add an attribute for stroke
+        # make it red
         frame_attr = {"stroke": "red", "fill": "none", "stroke-width": "0.1"}
 
-        # add to your lists
+        # add to scene
         self.paths.append(frame_path)
         self.attributes.append(frame_attr)
 
@@ -296,7 +298,7 @@ class Graphics:
         if not self.paths:
             return
         self.frame = False
-        # Optionally, check if last path is a rectangle
+        # check if last path is a rectangle
         last_path = self.paths[-1]
         if len(last_path) == 4:  # rectangle has 4 segments
             # remove path and attributes
@@ -316,8 +318,8 @@ class Graphics:
             self.frame = True
 
 
-
 stop_thread = False
+
 
 def send_hpgl_thread(port, baudrate, data, chunk_size=1024, write_timeout=5):
     global stop_thread
@@ -329,7 +331,7 @@ def send_hpgl_thread(port, baudrate, data, chunk_size=1024, write_timeout=5):
             bytesize=serial.EIGHTBITS,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,
-            timeout=None,           # read timeout
+            timeout=None,  # read timeout
             write_timeout=write_timeout,  # write timeout in seconds
             xonxoff=False,
             rtscts=False,
@@ -338,12 +340,12 @@ def send_hpgl_thread(port, baudrate, data, chunk_size=1024, write_timeout=5):
             # short wait for plotter wake-up
             time.sleep(2)
             print("Sending HPGL...")
-            
+
             for i in range(0, len(data), chunk_size):
                 if stop_thread:
                     print("Send cancelled.")
                     break
-                chunk = data[i:i+chunk_size].encode("ascii")
+                chunk = data[i : i + chunk_size].encode("ascii")
                 try:
                     ser.write(chunk)
                 except serial.SerialTimeoutException:
@@ -357,6 +359,7 @@ def send_hpgl_thread(port, baudrate, data, chunk_size=1024, write_timeout=5):
             print("Done sending HPGL.")
     except serial.SerialException as e:
         print(f"Error opening serial port {port}: {e}")
+
 
 # def send_hpgl_tread(port, baudrate, data):
 #     try:
