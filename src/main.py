@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
     QFileDialog,
+    QMessageBox,
 )
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette
@@ -73,6 +74,8 @@ class MainWindow(QMainWindow):
         self.refresh_btn.clicked.connect(self.actions.load_svg)
         # self.refresh_btn.clicked.connect(self.action_open_settings)
         self.plot_btn.clicked.connect(self.actions.plot)
+        # about popup
+        self.about_btn.clicked.connect(self.actions.show_about)
         # check box rotate
         self.rotate_check.toggled.connect(self.actions.rot_90)
         # check box frame
@@ -283,6 +286,28 @@ class Actions:
             # test = dlg.get_values()g
             self.parent.plotter_attr.save_settngs()
             self.parent.log_msg("settings saved")
+
+    def show_about(self):
+        QMessageBox.about(
+            self.parent,
+        "About Switchblade",
+            """
+            <b>Switchblade</b><br>
+            Version 0.0.1<br><br>
+
+            A vinyl plotter tool for sending SVG files.<br><br>
+
+            © 2025 Joerg Beigang<br><br>
+
+            This program is free software: you can redistribute it and/or modify
+            it under the terms of the <b>GNU General Public License v3</b>
+            as published by the Free Software Foundation.<br><br>
+
+            <a href="https://www.gnu.org/licenses/gpl-3.0.html">
+            https://www.gnu.org/licenses/gpl-3.0.html
+            </a>
+            """
+        )
 
 
 class ShortcutManager:

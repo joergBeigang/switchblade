@@ -163,6 +163,7 @@ def build_gui(parent):
     parent.open_btn = QPushButton("Open SVG")
     parent.refresh_btn = QPushButton("Refresh SVG")
     parent.plot_btn = QPushButton("Plot")
+    parent.about_btn = QPushButton("About")
     left_layout.addWidget(parent.open_btn)
     left_layout.addWidget(parent.refresh_btn)
     left_layout.addWidget(parent.plot_btn)
@@ -171,6 +172,7 @@ def build_gui(parent):
     parent.log.setReadOnly(True)
     parent.log.setMaximumBlockCount(1000)  # optional: limit history
     left_layout.addWidget(parent.log)
+    left_layout.addWidget(parent.about_btn)
 
     # Push everything up
     left_layout.addStretch()
