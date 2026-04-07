@@ -20,9 +20,11 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 import math
 import threading
 from math import radians, cos, sin
-from svgpathtools import Path, Line, svg2paths
+from copy import deepcopy
+from svgpathtools import Path, Line, svg2paths, Arc
 from xml.etree.ElementTree import Element, SubElement, tostring
 import serial
+import xml.etree.ElementTree as ET
 import time
 
 
@@ -141,9 +143,24 @@ class Graphics:
         """
         self.file_name = path_to_file
         self.paths, self.attributes = svg2paths(self.file_name)
+        self.orig_paths = deepcopy(self.paths)
+        self.convert_to_path()
         self.set_outline_mode(render_color)
         dim = self.update()
         return dim
+
+    def convert_to_path(self):
+        new_paths = []
+        for path in self.orig_paths:
+            new_path = Path()
+            for segment in path:
+                if isinstance(segment, Arc):
+                    # convert the Arc to one or more CubicBezier segments
+                    new_path.extend(segment.as_cubic_curves())
+                else:
+                    new_path.append(segment)
+            new_paths.append(new_path)
+        self.paths = deepcopy(new_paths)
 
     def set_outline_mode(self, render_color, stroke_width=0.2):
         """
@@ -160,7 +177,10 @@ class Graphics:
         svg_elem = Element("svg", xmlns="http://www.w3.org/2000/svg")
 
         for path, attr in zip(self.paths, self.attributes):
-            d = path.d()
+            try:
+                d = path.d()
+            except AttributeError:
+                pass
             # remove 'd' if it exists in attributes
             attr_copy = dict(attr)
             attr_copy.pop("d", None)
@@ -192,23 +212,23 @@ class Graphics:
     def rotate(self, angle_deg: float, origin=(0, 0)):
         """
         Rotate all paths by angle_deg degrees around a given origin.
-        : param angle_deg: rotation angle in degrees
-        : param origin: tuple(x, y) to rotate around
-        """
+        Works safely for all types of SVG paths (lines, beziers, arcs, disconnected paths).
 
+        :param angle_deg: rotation angle in degrees
+        :param origin: tuple(x, y) to rotate around
+        """
         if not self.paths:
-            return None  # or (0,0,0,0) if you prefer
-        print(angle_deg)
+            return None
+
         self.rotation += angle_deg
-        # if angle_deg < 0:
-        #     angle_deg = 360 - abs(angle_deg)
-        # print(angle_deg)
         ox, oy = origin
         angle_rad = radians(angle_deg)
         cos_a = cos(angle_rad)
         sin_a = sin(angle_rad)
 
         def rotate_point(p):
+            if p is None:
+                return None
             x, y = p.real, p.imag
             x -= ox
             y -= oy
@@ -218,12 +238,33 @@ class Graphics:
 
         for path in self.paths:
             for segment in path:
-                segment.start = rotate_point(segment.start)
-                segment.end = rotate_point(segment.end)
+                # rotate start and end points
+                if hasattr(segment, "start") and segment.start is not None:
+                    segment.start = rotate_point(segment.start)
+                if hasattr(segment, "end") and segment.end is not None:
+                    segment.end = rotate_point(segment.end)
+
+                # rotate control points if they exist
                 if hasattr(segment, "control1"):
-                    segment.control1 = rotate_point(segment.control1)
+                    segment.control1 = rotate_point(getattr(segment, "control1", None))
                 if hasattr(segment, "control2"):
-                    segment.control2 = rotate_point(segment.control2)
+                    segment.control2 = rotate_point(getattr(segment, "control2", None))
+                if hasattr(segment, "control"):  # quadratic bezier
+                    segment.control = rotate_point(getattr(segment, "control", None))
+
+                # for arcs, convert to cubic and rotate points (optional, depends on your svg library)
+                if segment.__class__.__name__ == "Arc" and hasattr(
+                    segment, "as_cubic_curves"
+                ):
+                    # rotate arc by decomposing to cubic curves
+                    cubic_segments = segment.as_cubic_curves()
+                    for cseg in cubic_segments:
+                        cseg.start = rotate_point(cseg.start)
+                        cseg.end = rotate_point(cseg.end)
+                        if hasattr(cseg, "control1"):
+                            cseg.control1 = rotate_point(cseg.control1)
+                        if hasattr(cseg, "control2"):
+                            cseg.control2 = rotate_point(cseg.control2)
 
         dim = self.update()  # rebuild svg_xml after rotation
         return dim
