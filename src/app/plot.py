@@ -1,20 +1,20 @@
 """
-    Switchblade - the bridge between Inkscape and old Mimaki plotters
+Switchblade - the bridge between Inkscape and old Mimaki plotters
 
-    Copyright (C) 2025 Joerg Beigang
+Copyright (C) 2025 Joerg Beigang
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import math
@@ -79,9 +79,15 @@ class PlotterSettings:
             all_points = apply_drag_knife_offset(all_points, self.knife_offset)
 
         # move points to the right lower corner
+        # min_x = min(x for pen, x, y in all_points)
+        # min_y = min(y for pen, x, y in all_points)
+        # normalized_points = [(pen, x - min_x, y - min_y) for pen, x, y in all_points]
+        # move points to the right lower corner
         min_x = min(x for pen, x, y in all_points)
         min_y = min(y for pen, x, y in all_points)
-        normalized_points = [(pen, x - min_x, y - min_y) for pen, x, y in all_points]
+        max_y = max(y for pen, x, y in all_points)
+
+        normalized_points = [(pen, x - min_x, max_y - y) for pen, x, y in all_points]
 
         # generate hpgl code from the points
         final_scale = scale * self.scale
