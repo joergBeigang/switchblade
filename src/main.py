@@ -63,6 +63,7 @@ class MainWindow(QMainWindow):
         self.connect_actions()
         self.load_ui_values()
         self.dim = [0, 0]
+        self.plotter_attr.update_gui.connect(self.log_msg)
 
     def connect_actions(self):
         """
