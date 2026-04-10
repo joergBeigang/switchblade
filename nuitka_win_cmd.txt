@@ -1,0 +1,7 @@
+python -m nuitka `
+    --standalone `
+    --enable-plugin=pyside6 `
+    --windows-disable-console `
+    --output-dir=build `
+    --output-filename=switchblade.exe `
+    src\main.py
