@@ -293,7 +293,7 @@ class Actions:
             "About Switchblade",
             """
             <b>Switchblade</b><br>
-            Version 0.0.2<br><br>
+            Version 0.0.3<br><br>
 
             A vinyl plotter tool for sending SVG files.<br><br>
 
