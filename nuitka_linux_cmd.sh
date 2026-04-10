@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-python -m nuitka \
+python3 -m nuitka \
   --standalone \
   --enable-plugin=pyside6 \
   --include-package=numpy \
