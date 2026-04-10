@@ -8,6 +8,24 @@ The workflow is simple: set up your scene in Inkscape, save the plot file, and s
 There’s also a scale value, so you can scale up the scene—these plotters can easily handle files several meters long. With careful vinyl alignment, even 10-meter plots are feasible.
 
 ---
+## Usage
+
+- setup your plotter to 9600 baud, 8 bits, parity: None, stop bit: 1 handshake: hard
+- use a usb to serial adapter to connect your computer to the plotter. It is important that the cable is supporting RTS/CTS. Some cheap adapters only connect tx rx and gnd. They will work only with jobs smaller than the buffer of the plotter! Chipsets like FTDI or Prolific or CH340 should work. 
+- Make sure everything in your SVG is a **path**—no text or other primitives.  
+- Best practice: group everything in one group. Avoid negative scaling.  
+  - In Inkscape: drag-select all → `Ctrl+Shift+G` to ungroup (repeat till all groups are gone) → `Ctrl+G` to group → save.
+
+### Keyboard Shortcuts
+
+- `Ctrl+O` → Open SVG  
+- `Ctrl+R` → Reload file  
+- `Ctrl+P` → Plot  
+- `Ctrl+,` → Settings dialog
+
+The GUI is straightforward and self-explanatory.
+
+---
 
 ## Technical Details
 
@@ -36,22 +54,6 @@ So far, I’ve only tested Switchblade with my Mimaki CG101 because it’s the o
 
 ---
 
-## Usage
-
-- Make sure everything in your SVG is a **path**—no text or other primitives.  
-- Best practice: group everything in one group. Avoid negative scaling.  
-  - In Inkscape: drag-select all → `Ctrl+Shift+G` to ungroup → `Ctrl+G` to group → save.
-
-### Keyboard Shortcuts
-
-- `Ctrl+O` → Open SVG  
-- `Ctrl+R` → Reload file  
-- `Ctrl+P` → Plot  
-- `Ctrl+,` → Settings dialog
-
-The GUI is straightforward and self-explanatory.
-
----
 
 ## Final Notes
 
