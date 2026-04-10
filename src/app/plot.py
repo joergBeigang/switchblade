@@ -25,7 +25,8 @@ from svgpathtools import Path, Line, svg2paths, Arc
 from xml.etree.ElementTree import Element, SubElement, tostring
 from PySide6.QtCore import Signal, QObject
 import serial
-import xml.etree.ElementTree as ET
+
+# import xml.etree.ElementTree as ET
 import time
 
 
@@ -47,6 +48,7 @@ class PlotterSettings(QObject):
         self.scale: float = 310.0
         self.load_settings()
         self.thread = None
+        self.stop_thread: bool = False
 
     def load_settings(self):
         """
@@ -84,12 +86,8 @@ class PlotterSettings(QObject):
         if self.knife_offset != 0:
             all_points = apply_drag_knife_offset(all_points, self.knife_offset)
 
-        # move points to the right lower corner
-        # min_x = min(x for pen, x, y in all_points)
-        # min_y = min(y for pen, x, y in all_points)
-        # normalized_points = [(pen, x - min_x, y - min_y) for pen, x, y in all_points]
-        # move points to the right lower corner
         min_x = min(x for pen, x, y in all_points)
+        # todo - do I need min_y?
         min_y = min(y for pen, x, y in all_points)
         max_y = max(y for pen, x, y in all_points)
 
@@ -109,15 +107,6 @@ class PlotterSettings(QObject):
         self.send_hpgl(self.port, self.baud, hpgl_cmds)
 
     def send_hpgl(self, port, baudrate, data):
-        # if self.tread:
-        #     self.tread.cancel()
-
-        # self.thread = threading.Thread(target=send_hpgl_tread, args=(port, baudrate, data))
-        # self.thread.start()
-        # if self.thread:
-        #     stop_thread = True
-        #     self.thread.join()
-        #     self.thread = None
         self.thread = threading.Thread(
             target=self.send_hpgl_thread, args=(port, baudrate, data)
         )
@@ -125,7 +114,6 @@ class PlotterSettings(QObject):
         self.thread.start()
 
     def send_hpgl_thread(self, port, baudrate, data, chunk_size=1024, write_timeout=5):
-        global stop_thread
         try:
             # timeout=None for read; finite write timeout to avoid hanging
             with serial.Serial(
@@ -137,17 +125,17 @@ class PlotterSettings(QObject):
                 timeout=None,  # read timeout
                 write_timeout=write_timeout,  # write timeout in seconds
                 xonxoff=False,
-                rtscts=False,
+                rtscts=True,  # handshake hard: important if buffer of plotter is full
                 dsrdtr=False,
             ) as ser:
                 # short wait for plotter wake-up
-                time.sleep(2)
+                time.sleep(1)
                 print("Sending HPGL...")
                 self.update_gui.emit("Sending HPGL...")
                 self.update_gui.emit(f"{len(data.encode('ascii'))} bytes")
 
                 for i in range(0, len(data), chunk_size):
-                    if stop_thread:
+                    if self.stop_thread:
                         print("Send cancelled.")
                         self.update_gui.emit("Send cancelled.")
                         break
@@ -413,81 +401,6 @@ class Graphics:
             self.frame = True
 
 
-stop_thread = False
-
-
-def send_hpgl_thread(port, baudrate, data, chunk_size=1024, write_timeout=5):
-    update = Signal(str)
-    global stop_thread
-    try:
-        # timeout=None for read; finite write timeout to avoid hanging
-        with serial.Serial(
-            port=port,
-            baudrate=baudrate,
-            bytesize=serial.EIGHTBITS,
-            parity=serial.PARITY_NONE,
-            stopbits=serial.STOPBITS_ONE,
-            timeout=None,  # read timeout
-            write_timeout=write_timeout,  # write timeout in seconds
-            xonxoff=False,
-            rtscts=False,
-            dsrdtr=False,
-        ) as ser:
-            # short wait for plotter wake-up
-            time.sleep(2)
-            print("Sending HPGL...")
-
-            for i in range(0, len(data), chunk_size):
-                if stop_thread:
-                    print("Send cancelled.")
-                    break
-                chunk = data[i : i + chunk_size].encode("ascii")
-                try:
-                    ser.write(chunk)
-                except serial.SerialTimeoutException:
-                    print("Write timeout, stopping send.")
-                    break
-            # ensure all data is sent
-            try:
-                ser.flush()
-            except serial.SerialException:
-                pass
-            print("Done sending HPGL.")
-    except serial.SerialException as e:
-        print(f"Error opening serial port {port}: {e}")
-
-
-# def send_hpgl_tread(port, baudrate, data):
-#     try:
-#         # timeout ensures serial open won't block forever
-#         with serial.Serial(
-#             port=port,
-#             baudrate=baudrate,
-#             bytesize=serial.EIGHTBITS,
-#             parity=serial.PARITY_NONE,
-#             stopbits=serial.STOPBITS_ONE,
-#             timeout=None,  # read timeout
-#             write_timeout=None,  # write timeout
-#             xonxoff=False,
-#             rtscts=False,
-#             dsrdtr=False,
-#         ) as ser:
-#             # optional: poll until the device responds instead of fixed sleep
-#             time.sleep(2)  # short wait for plotter wake-up
-#             print("Sending HPGL...")
-#             ser.write(data.encode("ascii"))
-#             time.sleep(0.5)
-#             ser.flush()
-#             print("Done.")
-#     except serial.SerialException as e:
-#         print(f"Error opening serial port {port}: {e}")
-
-
-def send_hpgl(port, baudrate, data):
-    thread = threading.Thread(target=send_hpgl_tread, args=(port, baudrate, data))
-    thread.start()
-
-
 def distance(p1, p2):
     dx = p2[0] - p1[0]
     dy = p2[1] - p1[1]
@@ -719,43 +632,6 @@ def apply_drag_knife_offset(points, offset):
                     adjusted[i + 1] = (next_pt[0], next_pt[1] - dx2, next_pt[2] - dy2)
 
     return adjusted
-
-
-# def send_to_plotter(attr: object, gfx: object, scale):
-#     """
-#     sends the data to the plotter
-#     """
-#     # parse the svg file
-#     paths = gfx.paths
-#     all_points = []
-#
-#     # flatten cuves
-#     for path in paths:
-#         pts = flatten_svg_path(path, max_chord=0.05, min_depth=5)
-#         all_points += pts
-#
-#     # compensate drag knife
-#     if attr.knife_offset != 0:
-#         all_points = apply_drag_knife_offset(all_points, attr.knife_offset)
-#
-#     # move points to the right lower corner
-#     min_x = min(x for pen, x, y in all_points)
-#     min_y = min(y for pen, x, y in all_points)
-#     normalized_points = [(pen, x - min_x, y - min_y) for pen, x, y in all_points]
-#
-#     # generate hpgl code from the points
-#     final_scale = scale * attr.scale
-#     hpgl_cmds = build_header(attr)
-#     hpgl_cmds += "\n".join(
-#         generate_hpgl_from_points(
-#             normalized_points,
-#             # scale=attr.scale,
-#             scale=final_scale,
-#         )
-#     )
-#     hpgl_cmds += "SO;"
-#     print(hpgl_cmds)
-#     send_hpgl(attr.port, attr.baud, hpgl_cmds)
 
 
 def build_header(attr: object):
