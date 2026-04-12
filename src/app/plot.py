@@ -114,6 +114,7 @@ class PlotterSettings(QObject):
         self.thread.start()
 
     def send_hpgl_thread(self, port, baudrate, data, chunk_size=1024, write_timeout=5):
+        error = False
         try:
             # timeout=None for read; finite write timeout to avoid hanging
             with serial.Serial(
@@ -138,11 +139,13 @@ class PlotterSettings(QObject):
                     if self.stop_thread:
                         print("Send cancelled.")
                         self.update_gui.emit("Send cancelled.")
+                        error = True
                         break
                     chunk = data[i : i + chunk_size].encode("ascii")
                     try:
                         ser.write(chunk)
                     except serial.SerialTimeoutException:
+                        error = True
                         print("Write timeout, stopping send.")
                         self.update_gui.emit("Write timeout, stopping send.")
                         break
@@ -151,7 +154,11 @@ class PlotterSettings(QObject):
                     ser.flush()
                 except serial.SerialException:
                     pass
-                self.update_gui.emit(f"successfully sent to {port}")
+                if error:
+                    self.update_gui.emit(f"failed to sent to {port}")
+                else:
+                    self.update_gui.emit(f"successfully sent to {port}")
+
         except serial.SerialException as e:
             print(f"Error opening serial port {port}: {e}")
             self.update_gui.emit(f"Error opening serial port {port}: {e}")
