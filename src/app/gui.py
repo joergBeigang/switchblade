@@ -1,20 +1,20 @@
 """
-    Switchblade - the bridge between Inkscape and old Mimaki plotters
+Switchblade - the bridge between Inkscape and old Mimaki plotters
 
-    Copyright (C) 2025 Joerg Beigang
+Copyright (C) 2025 Joerg Beigang
 
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 from PySide6.QtCore import Qt
@@ -91,13 +91,13 @@ def build_gui(parent):
     pressure_top = QHBoxLayout()
     pressure_top.addWidget(QLabel("Force"))
     parent.pressure_spin = QSpinBox()
-    parent.pressure_spin.setRange(1, 200)
+    parent.pressure_spin.setRange(1, 300)
     parent.pressure_spin.setValue(80)
     pressure_top.addWidget(parent.pressure_spin)
     pressure_layout.addLayout(pressure_top)
 
     parent.pressure_slider = QSlider(Qt.Horizontal)
-    parent.pressure_slider.setRange(1, 200)
+    parent.pressure_slider.setRange(1, 300)
     parent.pressure_slider.setValue(80)
     pressure_layout.addWidget(parent.pressure_slider)
 
