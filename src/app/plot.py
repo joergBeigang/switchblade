@@ -46,6 +46,7 @@ class PlotterSettings(QObject):
         self.speed: int = 0
         self.pressure: int = 0
         self.scale: float = 310.0
+        self.rtscts: bool = False
         self.load_settings()
         self.thread = None
         self.stop_thread: bool = False
@@ -60,6 +61,9 @@ class PlotterSettings(QObject):
         )
         self.baud = int(self.settings.settings.value("plot/baud", 9600, type=int))
         self.port = self.settings.settings.value("plot/port", "COM1", type=str)
+        self.rtscts = self.settings.settings.value(
+            "plot/rtscts", False, type=bool
+        )
 
     def save_settngs(self):
         """
@@ -68,12 +72,12 @@ class PlotterSettings(QObject):
         self.settings.settings.setValue("plot/scale_factor", self.scale)
         self.settings.settings.setValue("plot/baud", self.baud)
         self.settings.settings.setValue("plot/port", self.port)
+        self.settings.settings.setValue("plot/rtscts", self.rtscts)
 
-    def plot(self, gfx: object, scale):
+    def build_hpgl(self, gfx: object, scale, inkscape_compatible=False):
         """
-        sends the data to the plotter
+        Build the HPGL payload that will be sent to the plotter.
         """
-        # parse the svg file
         paths = gfx.paths
         all_points = []
 
@@ -87,33 +91,46 @@ class PlotterSettings(QObject):
             all_points = apply_drag_knife_offset(all_points, self.knife_offset)
 
         min_x = min(x for pen, x, y in all_points)
-        # todo - do I need min_y?
-        min_y = min(y for pen, x, y in all_points)
         max_y = max(y for pen, x, y in all_points)
 
         normalized_points = [(pen, x - min_x, max_y - y) for pen, x, y in all_points]
 
         # generate hpgl code from the points
         final_scale = scale * self.scale
-        hpgl_cmds = build_header(self)
+        hpgl_cmds = build_header(self, inkscape_compatible=inkscape_compatible)
         hpgl_cmds += "\n".join(
             generate_hpgl_from_points(
                 normalized_points,
-                # scale=attr.scale,
                 scale=final_scale,
             )
         )
-        hpgl_cmds += "SO;"
-        self.send_hpgl(self.port, self.baud, hpgl_cmds)
+        if not inkscape_compatible:
+            hpgl_cmds += "SO;"
+        return hpgl_cmds
+
+    def plot(self, gfx: object, scale):
+        """
+        sends the data to the plotter
+        """
+        self.send_hpgl(self.port, self.baud, self.build_hpgl(gfx, scale))
 
     def send_hpgl(self, port, baudrate, data):
+        self.stop_thread = False
         self.thread = threading.Thread(
-            target=self.send_hpgl_thread, args=(port, baudrate, data)
+            target=self.send_hpgl_thread, args=(port, baudrate, data, self.rtscts)
         )
         self.thread.daemon = True
         self.thread.start()
 
-    def send_hpgl_thread(self, port, baudrate, data, chunk_size=1024, write_timeout=5):
+    def send_hpgl_thread(
+        self,
+        port,
+        baudrate,
+        data,
+        rtscts=False,
+        chunk_size=1024,
+        write_timeout=5,
+    ):
         error = False
         try:
             # timeout=None for read; finite write timeout to avoid hanging
@@ -126,7 +143,7 @@ class PlotterSettings(QObject):
                 timeout=None,  # read timeout
                 write_timeout=write_timeout,  # write timeout in seconds
                 xonxoff=False,
-                rtscts=True,  # handshake hard: important if buffer of plotter is full
+                rtscts=rtscts,
                 dsrdtr=False,
             ) as ser:
                 # short wait for plotter wake-up
@@ -570,22 +587,35 @@ def generate_hpgl_from_points(points, scale=2):
     points: list of(pen, x, y) tuples, 0 = PU, 1 = PD
     scale: multiplier to convert SVG units to plotter units
     """
-    cmds = []
+    cmds = ["PU;"]
     pen_down = False
+    current_pos = None
 
     for pen, x, y in points:
         x_scaled = int(x * scale)
         y_scaled = int(y * scale)
+        pos = (x_scaled, y_scaled)
 
-        if pen == 0:  # PU
-            cmds.append(f"PU {x_scaled},{y_scaled};")
-            pen_down = False
-        else:  # PD
+        if pen == 0:  # PU travel move
+            if pen_down:
+                cmds.append("PU;")
+                pen_down = False
+            if current_pos != pos:
+                cmds.append(f"PA {x_scaled},{y_scaled};")
+                current_pos = pos
+        else:  # PD cutting move
             if not pen_down:
-                cmds.append(f"PD {x_scaled},{y_scaled};")
+                if current_pos != pos:
+                    cmds.append(f"PA {x_scaled},{y_scaled};")
+                    current_pos = pos
+                cmds.append("PD;")
                 pen_down = True
-            else:
-                cmds.append(f"PD {x_scaled},{y_scaled};")
+            elif current_pos != pos:
+                cmds.append(f"PA {x_scaled},{y_scaled};")
+                current_pos = pos
+
+    if pen_down:
+        cmds.append("PU;")
 
     return cmds
 
@@ -641,12 +671,14 @@ def apply_drag_knife_offset(points, offset):
     return adjusted
 
 
-def build_header(attr: object):
+def build_header(attr: object, inkscape_compatible=False):
     """
     returns a string with the header for the hpgl file
     """
-    header = "SO;IN; !PG0;PA ;SP1;\n"
-    header += "VS1PU 3307,0; PD 3307,0; PU 0,0;"
+    if inkscape_compatible:
+        return "IN;PA;SP1;PU;\n"
+
+    header = "SO;IN;!PG0;PA;SP1;PU;\n"
     header += f"VS{attr.speed};\n"
     header += f"FS{ui_to_fs(attr.pressure)};\n"
     return header

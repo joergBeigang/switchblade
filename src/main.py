@@ -74,6 +74,7 @@ class MainWindow(QMainWindow):
         self.refresh_btn.clicked.connect(self.actions.load_svg)
         # self.refresh_btn.clicked.connect(self.action_open_settings)
         self.plot_btn.clicked.connect(self.actions.plot)
+        self.save_plot_btn.clicked.connect(self.actions.save_hpgl)
         # about popup
         self.about_btn.clicked.connect(self.actions.show_about)
         # check box rotate
@@ -238,6 +239,29 @@ class Actions:
         self.parent.log_msg(f"Port:{self.parent.plotter_attr.port}")
         self.parent.log_msg(f"Baud:{self.parent.plotter_attr.baud}")
         self.parent.log_msg(f"Global Scale:{self.parent.scale_spin.value()}")
+
+    def save_hpgl(self):
+        if not self.graphics.paths:
+            return
+        file_name, _ = QFileDialog.getSaveFileName(
+            self.parent,
+            "Save HPGL file",
+            "plot.hpgl",
+            "HPGL Files (*.hpgl *.plt);;All Files (*)",
+        )
+        if not file_name:
+            return
+        self.parent.update_plotter_attributes()
+        scale = self.parent.scale_spin.value()
+        hpgl = self.parent.plotter_attr.build_hpgl(
+            self.parent.graphics,
+            scale,
+            inkscape_compatible=True,
+        )
+        with open(file_name, "w", encoding="ascii") as hpgl_file:
+            hpgl_file.write(hpgl)
+        self.parent.log_msg(f"saved HPGL: {file_name}")
+        self.parent.log_msg(f"{len(hpgl.encode('ascii'))} bytes")
 
     def rot_90(self):
         """

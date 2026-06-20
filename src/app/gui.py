@@ -163,10 +163,12 @@ def build_gui(parent):
     parent.open_btn = QPushButton("Open SVG")
     parent.refresh_btn = QPushButton("Refresh SVG")
     parent.plot_btn = QPushButton("Plot")
+    parent.save_plot_btn = QPushButton("Save HPGL")
     parent.about_btn = QPushButton("About")
     left_layout.addWidget(parent.open_btn)
     left_layout.addWidget(parent.refresh_btn)
     left_layout.addWidget(parent.plot_btn)
+    left_layout.addWidget(parent.save_plot_btn)
 
     parent.log = QPlainTextEdit()
     parent.log.setReadOnly(True)
@@ -230,6 +232,11 @@ class SettingsDialog(QDialog):
         self.set_value_combo_box(str(self.plot_attr.baud), self.baud_combo)
         layout.addWidget(self.baud_combo)
 
+        # --- Flow control ---
+        self.rtscts_check = QCheckBox("Hardware flow control (RTS/CTS)")
+        self.rtscts_check.setChecked(self.plot_attr.rtscts)
+        layout.addWidget(self.rtscts_check)
+
         # --- OK/Cancel buttons ---
         btn_layout = QHBoxLayout()
         ok_btn = QPushButton("OK")
@@ -254,6 +261,7 @@ class SettingsDialog(QDialog):
         self.plot_attr.scale = self.scale_factor_spin.value()
         self.plot_attr.baud = int(self.baud_combo.currentText())
         self.plot_attr.port = self.port_combo.currentText()
+        self.plot_attr.rtscts = self.rtscts_check.isChecked()
 
     def on_accept(self):
         self.update_plot_attr()
