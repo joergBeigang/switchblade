@@ -74,7 +74,7 @@ class PlotterSettings(QObject):
         self.settings.settings.setValue("plot/port", self.port)
         self.settings.settings.setValue("plot/rtscts", self.rtscts)
 
-    def build_hpgl(self, gfx: object, scale, inkscape_compatible=False):
+    def build_hpgl(self, gfx: object, scale):
         """
         Build the HPGL payload that will be sent to the plotter.
         """
@@ -97,15 +97,13 @@ class PlotterSettings(QObject):
 
         # generate hpgl code from the points
         final_scale = scale * self.scale
-        hpgl_cmds = build_header(self, inkscape_compatible=inkscape_compatible)
+        hpgl_cmds = build_header(self)
         hpgl_cmds += "\n".join(
             generate_hpgl_from_points(
                 normalized_points,
                 scale=final_scale,
             )
         )
-        if not inkscape_compatible:
-            hpgl_cmds += "SO;"
         return hpgl_cmds
 
     def plot(self, gfx: object, scale):
@@ -671,17 +669,11 @@ def apply_drag_knife_offset(points, offset):
     return adjusted
 
 
-def build_header(attr: object, inkscape_compatible=False):
+def build_header(attr: object):
     """
     returns a string with the header for the hpgl file
     """
-    if inkscape_compatible:
-        return "IN;PA;SP1;PU;\n"
-
-    header = "SO;IN;!PG0;PA;SP1;PU;\n"
-    header += f"VS{attr.speed};\n"
-    header += f"FS{ui_to_fs(attr.pressure)};\n"
-    return header
+    return "IN;PA;SP1;PU;\n"
 
 
 def ui_to_fs(ui_value: float) -> int:

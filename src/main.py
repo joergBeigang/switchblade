@@ -253,11 +253,7 @@ class Actions:
             return
         self.parent.update_plotter_attributes()
         scale = self.parent.scale_spin.value()
-        hpgl = self.parent.plotter_attr.build_hpgl(
-            self.parent.graphics,
-            scale,
-            inkscape_compatible=True,
-        )
+        hpgl = self.parent.plotter_attr.build_hpgl(self.parent.graphics, scale)
         with open(file_name, "w", encoding="ascii") as hpgl_file:
             hpgl_file.write(hpgl)
         self.parent.log_msg(f"saved HPGL: {file_name}")
