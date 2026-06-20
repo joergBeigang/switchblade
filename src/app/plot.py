@@ -18,6 +18,8 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import math
+import os
+import sys
 import threading
 from math import radians, cos, sin
 from copy import deepcopy
@@ -25,6 +27,9 @@ from svgpathtools import Path, Line, svg2paths, Arc
 from xml.etree.ElementTree import Element, SubElement, tostring
 from PySide6.QtCore import Signal, QObject
 import serial
+
+if sys.platform != "win32":
+    import termios
 
 # import xml.etree.ElementTree as ET
 import time
@@ -127,8 +132,12 @@ class PlotterSettings(QObject):
         data,
         rtscts=False,
         chunk_size=1024,
-        write_timeout=5,
+        write_timeout=None,
     ):
+        if sys.platform != "win32":
+            self.send_hpgl_posix_raw(port, baudrate, data, rtscts)
+            return
+
         error = False
         try:
             # timeout=None for read; finite write timeout to avoid hanging
@@ -139,7 +148,7 @@ class PlotterSettings(QObject):
                 parity=serial.PARITY_NONE,
                 stopbits=serial.STOPBITS_ONE,
                 timeout=None,  # read timeout
-                write_timeout=write_timeout,  # write timeout in seconds
+                write_timeout=write_timeout,
                 xonxoff=False,
                 rtscts=rtscts,
                 dsrdtr=False,
@@ -150,19 +159,35 @@ class PlotterSettings(QObject):
                 self.update_gui.emit("Sending HPGL...")
                 self.update_gui.emit(f"{len(data.encode('ascii'))} bytes")
 
-                for i in range(0, len(data), chunk_size):
+                data_bytes = data.encode("ascii")
+                for i in range(0, len(data_bytes), chunk_size):
                     if self.stop_thread:
                         print("Send cancelled.")
                         self.update_gui.emit("Send cancelled.")
                         error = True
                         break
-                    chunk = data[i : i + chunk_size].encode("ascii")
-                    try:
-                        ser.write(chunk)
-                    except serial.SerialTimeoutException:
-                        error = True
-                        print("Write timeout, stopping send.")
-                        self.update_gui.emit("Write timeout, stopping send.")
+                    chunk = memoryview(data_bytes[i : i + chunk_size])
+                    while chunk:
+                        if self.stop_thread:
+                            print("Send cancelled.")
+                            self.update_gui.emit("Send cancelled.")
+                            error = True
+                            break
+                        try:
+                            bytes_written = ser.write(chunk)
+                        except serial.SerialTimeoutException:
+                            error = True
+                            print("Write timeout, stopping send.")
+                            self.update_gui.emit("Write timeout, stopping send.")
+                            break
+                        if bytes_written is None:
+                            bytes_written = len(chunk)
+                        if bytes_written == 0:
+                            error = True
+                            self.update_gui.emit("Serial write wrote 0 bytes, stopping send.")
+                            break
+                        chunk = chunk[bytes_written:]
+                    if error:
                         break
                 # ensure all data is sent
                 try:
@@ -177,6 +202,67 @@ class PlotterSettings(QObject):
         except serial.SerialException as e:
             print(f"Error opening serial port {port}: {e}")
             self.update_gui.emit(f"Error opening serial port {port}: {e}")
+
+    def send_hpgl_posix_raw(self, port, baudrate, data, rtscts=False, chunk_size=256):
+        """
+        Send bytes like `cat file.hpgl > /dev/ttyUSB0` on POSIX systems.
+        Uses raw termios output, with optional hardware flow control.
+        """
+        baud_constants = {
+            9600: termios.B9600,
+            19200: termios.B19200,
+            38400: termios.B38400,
+            115200: termios.B115200,
+        }
+        baud = baud_constants.get(int(baudrate), termios.B9600)
+        data_bytes = data.encode("ascii")
+        fd = None
+        error = False
+
+        try:
+            fd = os.open(port, os.O_WRONLY | os.O_NOCTTY)
+            attrs = termios.tcgetattr(fd)
+            attrs[0] = 0  # iflag: raw input flags
+            attrs[1] = 0  # oflag: raw output flags, no newline translation
+            attrs[2] = termios.CLOCAL | termios.CREAD | termios.CS8
+            if rtscts and hasattr(termios, "CRTSCTS"):
+                attrs[2] |= termios.CRTSCTS
+            attrs[3] = 0  # lflag: raw local flags
+            attrs[4] = baud
+            attrs[5] = baud
+            termios.tcsetattr(fd, termios.TCSANOW, attrs)
+
+            time.sleep(1)
+            print("Sending HPGL...")
+            self.update_gui.emit("Sending HPGL...")
+            self.update_gui.emit(f"{len(data_bytes)} bytes")
+
+            for i in range(0, len(data_bytes), chunk_size):
+                if self.stop_thread:
+                    print("Send cancelled.")
+                    self.update_gui.emit("Send cancelled.")
+                    error = True
+                    break
+                chunk = memoryview(data_bytes[i : i + chunk_size])
+                while chunk:
+                    written = os.write(fd, chunk)
+                    if written == 0:
+                        raise OSError("serial write wrote 0 bytes")
+                    chunk = chunk[written:]
+                if not rtscts:
+                    termios.tcdrain(fd)
+
+            termios.tcdrain(fd)
+            if error:
+                self.update_gui.emit(f"failed to send to {port}")
+            else:
+                self.update_gui.emit(f"successfully sent to {port}")
+        except OSError as e:
+            print(f"Error writing serial port {port}: {e}")
+            self.update_gui.emit(f"Error writing serial port {port}: {e}")
+        finally:
+            if fd is not None:
+                os.close(fd)
 
 
 class Graphics:
